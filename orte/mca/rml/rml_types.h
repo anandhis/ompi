@@ -162,6 +162,11 @@ BEGIN_C_DECLS
 #define ORTE_RML_TAG_MAX                   100
 
 
+/*** RML OFI keys ***/
+#define ORTE_OFI_START_KEY 	ORTE_QOS_MAX_KEY
+#define ORTE_PROV_NAME		(ORTE_QOS_MAX_KEY + 1)  	//char * - null terminated string containing provider name
+#define ORTE_PROTOCOL           (ORTE_QOS_MAX_KEY + 2)          //uint32 - protocol type as returned by fi_info
+
 #define ORTE_RML_TAG_NTOH(t) ntohl(t)
 #define ORTE_RML_TAG_HTON(t) htonl(t)
 
