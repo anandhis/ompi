@@ -435,6 +435,20 @@ typedef int  (*orte_rml_module_ft_event_fn_t)(int state);
  */
 typedef void (*orte_rml_module_purge_fn_t)(orte_process_name_t *peer);
 
+/******** Interfaces for fabric libraries such as libfabric ****/
+
+/**
+ * Query the library to provide all the supported interfaces/transport
+ * providers in the current node/system.
+ *
+ * @param[out] providers  list of providers and their attributes.
+ *
+ * @retval ORTE_SUCCESS The providers list was populated successfully
+ * @retval ORTE_ERROR   An unspecified error occured
+*/
+typedef int (*orte_rml_module_query_transports_fn_t)(opal_value_t **providers);
+
+
 /********* NEW RML QOS MESSAGING APIS *****************/
 /***** Questions *****/
 /*
@@ -628,6 +642,9 @@ struct orte_rml_base_module_t {
 
     /** Purge information */
     orte_rml_module_purge_fn_t                   purge;
+
+    /** Query information of transport in system */
+    orte_rml_module_query_transports_fn_t       query_transports;
 };
 /** Convenience typedef */
 typedef struct orte_rml_base_module_t orte_rml_base_module_t;
