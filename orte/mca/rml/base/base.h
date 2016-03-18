@@ -25,7 +25,7 @@
  *
  * RML Framework maintenence interface
  *
- * Interface for starting / stopping / controlling the RML framework,
+ * Interface for starting / stopping / controlling the RML framework,307
  * as well as support for modifying RML datatypes.
  *
  * @note The only RML datatype exposed to the user is the RML tag.
@@ -302,6 +302,8 @@ ORTE_DECLSPEC int orte_rml_API_del_exception_handler(orte_rml_exception_callback
 ORTE_DECLSPEC int orte_rml_API_ft_event(int state);
 
 ORTE_DECLSPEC void orte_rml_API_purge(orte_process_name_t *peer);
+
+ORTE_DECLSPEC int orte_rml_API_query_transports(opal_value_t **providers);
 
 END_C_DECLS
 
