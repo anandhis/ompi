@@ -34,7 +34,7 @@ void mca_base_component_unload (const mca_base_component_t *component, int outpu
 
     /* Unload */
     opal_output_verbose (MCA_BASE_VERBOSE_COMPONENT, output_id,
-                         "mca: base: close: unloading component %s",
+                         "mca: base: close: unloading component %s started",
                          component->mca_component_name);
 
     ret = mca_base_var_group_find (component->mca_project_name, component->mca_type_name,
@@ -43,7 +43,16 @@ void mca_base_component_unload (const mca_base_component_t *component, int outpu
         mca_base_var_group_deregister (ret);
     }
 
+ /* Unload */
+    opal_output_verbose (MCA_BASE_VERBOSE_COMPONENT, output_id,
+                         "mca: base: close: deregister complete, abt to remove from repository  %s",
+                         component->mca_component_name);
+
     mca_base_component_repository_release (component);
+
+ /* Unload */
+    opal_output_verbose (MCA_BASE_VERBOSE_COMPONENT, output_id,
+                         "mca: base: close: unloading component completed");
 }
 
 void mca_base_component_close (const mca_base_component_t *component, int output_id)

@@ -85,6 +85,10 @@ void orte_rml_API_finalize(void)
             active->module->finalize();
         }
     }
+    //[A] 
+    //3/25 -> moving here to avoid multiple calls from each plugin to this base fn
+    orte_rml_base_comm_stop();
+    
 }
 
 /** Get contact information for local process */
@@ -419,7 +423,7 @@ int orte_rml_API_query_transports(opal_value_t **providers)
     OPAL_LIST_FOREACH(active, &orte_rml_base.actives, orte_rml_base_active_t) {
         if (NULL != active->module->query_transports) {
             	  opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n calling  module: %s->query_transports() \n",active->component->mca_component_name);
-            if (ORTE_SUCCESS != (rc = active->module->query_transports(providers))) {
+            if (ORTE_SUCCESS == (rc = active->module->query_transports(providers))) {
                 break;
             }
         }
