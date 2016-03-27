@@ -1,0 +1,98 @@
+.\" Copyright 2007-2010 Oracle and/or its affiliates.  All rights reserved.
+.\" Copyright (c) 1996 Thinking Machines Corporation
+.\" Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
+.TH OMPI_Affinity_str 3 "Unreleased developer copy" "gitclone" "Open MPI"
+.SH NAME
+\fBOMPI_Affinity_str\fP \- Obtain prettyprint strings of processor affinity information for this process
+
+.SH SYNTAX
+.ft R
+.SH C Syntax
+.nf
+#include <mpi.h>
+#include <mpi-ext.h>
+
+int OMPI_Affinity_str(ompi_affinity_fmt_type_t \fIfmt_type\fP,
+                      char \fIompi_bound\fP[OMPI_AFFINITY_STRING_MAX],
+                      char \fIcurrent_binding\fP[OMPI_AFFINITY_STRING_MAX],
+                      char \fIexists\fP[OMPI_AFFINITY_STRING_MAX])
+.fi
+.SH Fortran Syntax
+There is no Fortran binding for this function.
+.
+.PP
+Output of mpirun -np 2 -bind-to-core a.out:
+.nf
+rank 0:
+       ompi_bound: socket 0[core 0]
+  current_binding: socket 0[core 0]
+           exists: socket 0 has 4 cores
+rank 1:
+       ompi_bound: socket 0[core 1]
+  current_binding: socket 0[core 1]
+           exists: socket 0 has 4 cores
+.fi
+.PP
+Output of mpirun -np 2 -bind-to-socket a.out:
+.nf
+rank 0:
+       ompi_bound: socket 0[core 0-3]
+  current_binding: Not bound (or bound to all available processors)
+           exists: socket 0 has 4 cores
+rank 1:
+       ompi_bound: socket 0[core 0-3]
+  current_binding: Not bound (or bound to all available processors)
+           exists: socket 0 has 4 cores
+.fi
+.sp
+.br
+\fBExample 2:\fP  Print out processes binding using layout string format.
+.sp
+.nf
+    int rank;
+    char ompi_bound[OMPI_AFFINITY_STRING_MAX];
+    char current_binding[OMPI_AFFINITY_STRING_MAX];
+    char exists[OMPI_AFFINITY_STRING_MAX];
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    OMPI_Affinity_str(OMPI_AFFINITY_LAYOUT_FMT,
+                      ompi_bound, current_binding, exists);
+    printf("rank %d: \\n"
+           "       ompi_bound: %s\\n"
+           "  current_binding: %s\\n"
+           "           exists: %s\\n",
+           rank, ompi_bound, current_binding, exists);
+    ...
+.fi
+.PP
+Output of mpirun -np 2 -bind-to-core a.out:
+.nf
+rank 0:
+       ompi_bound: [B . . .]
+  current_binding: [B . . .]
+           exists: [. . . .]
+rank 1:
+       ompi_bound: [. B . .]
+  current_binding: [. B . .]
+           exists: [. . . .]
+.fi
+.PP
+Output of mpirun -np 2 -bind-to-socket a.out:
+.nf
+rank 0:
+       ompi_bound: [B B B B]
+  current_binding: [B B B B]
+           exists: [. . . .]
+rank 1:
+       ompi_bound: [B B B B]
+  current_binding: [B B B B]
+           exists: [. . . .]
+.fi
+
+.SH See Also
+.ft R
+.nf
+mpirun(1)
+.fi
