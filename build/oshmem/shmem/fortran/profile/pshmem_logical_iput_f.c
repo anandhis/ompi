@@ -1,1 +1,0 @@
-../../../../../oshmem/shmem/fortran/shmem_logical_iput_f.c

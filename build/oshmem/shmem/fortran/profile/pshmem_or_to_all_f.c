@@ -1,1 +1,0 @@
-../../../../../oshmem/shmem/fortran/shmem_or_to_all_f.c
