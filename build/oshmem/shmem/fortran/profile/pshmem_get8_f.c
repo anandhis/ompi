@@ -1,1 +1,0 @@
-../../../../../oshmem/shmem/fortran/shmem_get8_f.c

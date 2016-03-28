@@ -1,1 +1,0 @@
-../../../../../oshmem/shmem/fortran/shmem_real_iget_f.c

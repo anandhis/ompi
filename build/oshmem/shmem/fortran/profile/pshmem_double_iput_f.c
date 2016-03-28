@@ -1,1 +1,0 @@
-../../../../../oshmem/shmem/fortran/shmem_double_iput_f.c
