@@ -32,6 +32,7 @@ static int my_priority=3;  // [A] - need to make this a #define or constant and 
 static orte_rml_base_module_t* rml_ofi_init(int* priority);  // [A] changed to refer to use internal base orte_rml_base_module_t
 static int rml_ofi_open(void);
 static int rml_ofi_close(void);
+void print_provider_list_info (struct fi_info *fi );
 
 /**
  * component definition
@@ -58,7 +59,7 @@ orte_rml_component_t mca_rml_ofi_component = {
 
 orte_rml_ofi_module_t orte_rml_ofi = {
     {
-        .enable_comm = orte_rml_ofi_init,
+         .enable_comm = orte_rml_ofi_init,   //  [A] should we be calling this ?
         .finalize = orte_rml_ofi_fini,
 	.query_transports = orte_rml_ofi_query_transports,
 
@@ -93,6 +94,8 @@ void print_provider_list_info (struct fi_info *fi )
     //Display all the details in the fi_info structure
     struct fi_info *cur_fi = fi;
     int fi_count = 0;
+
+    opal_output_verbose(1,orte_rml_base_framework.framework_output," %s:%d Printing results of fi_getinfo() ",__FILE__,__LINE__);
 
     while(cur_fi != NULL)   {
         fi_count++;
@@ -283,8 +286,9 @@ rml_ofi_init(int* priority)
      * control_progress:  enable async progress
      */
     //[Anandhi] For debug purpose removing this inorder to check if the query works when multiple providers are listed 
+    //[A]     
     hints->ep_attr->type      = FI_EP_RDM;      /* Reliable datagram         */
-    hints->domain_attr->threading        = FI_THREAD_ENDPOINT;
+    // hints->domain_attr->threading        = FI_THREAD_ENDPOINT;  [A] by default this is FI_THREAD_SAFE leave it at that 
     hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
 
     /**
@@ -313,40 +317,41 @@ rml_ofi_init(int* priority)
     }
 
     /*[A] added for debug purpose - removing it - Print the provider info 
-    print_transports_query();
+    print_transports_query(); 
     print_provider_list_info(orte_rml_ofi.fi_info_list);
     */
     
-
+    
     /**
      * Open fabric
      * The getinfo struct returns a fabric attribute struct that can be used to
      * instantiate the virtual or physical network. This opens a "fabric
      * provider". See man fi_fabric for details.
      */
-    ret = fi_fabric(orte_rml_ofi.fi_info_list->fabric_attr,    /* In:  Fabric attributes             */
-                    &orte_rml_ofi.fabric, /* Out: Fabric handle                 */
-                    NULL);                /* Optional context for fabric events */
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_fabric failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
 
+     ret = fi_fabric(orte_rml_ofi.fi_info_list->fabric_attr,    /* In:  Fabric attributes             */
+                   &orte_rml_ofi.fabric, /* Out: Fabric handle                 */
+                     NULL);                /* Optional context for fabric events */
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                            "%s:%d: fi_fabric failed: %s\n",
+                           __FILE__, __LINE__, fi_strerror(-ret));
+       goto error;
+     }
+ 
     /**
      * Create the access domain, which is the physical or virtual network or
      * hardware port/collection of ports.  Returns a domain object that can be
      * used to create endpoints.  See man fi_domain for details.
      */
-    ret = fi_domain(orte_rml_ofi.fabric,  /* In:  Fabric object                 */
-                    orte_rml_ofi.fi_info_list,                 /* In:  Provider                      */
-                    &orte_rml_ofi.domain, /* Out: Domain oject                  */
-                    NULL);                /* Optional context for domain events */
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_domain failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
+     ret = fi_domain(orte_rml_ofi.fabric,  /* In:  Fabric object                 */
+                     orte_rml_ofi.fi_info_list,                 /* In:  Provider                      */
+                   &orte_rml_ofi.domain, /* Out: Domain oject                  */
+                     NULL);                /* Optional context for domain events */
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "%s:%d: fi_domain failed: %s\n",
+                             __FILE__, __LINE__, fi_strerror(-ret));
         goto error;
     }
 
@@ -357,16 +362,16 @@ rml_ofi_init(int* priority)
      * completion queues, etc.
      * see man fi_endpoint for more details.
      */
-    ret = fi_endpoint(orte_rml_ofi.domain, /* In:  Domain object   */
+     ret = fi_endpoint(orte_rml_ofi.domain, /* In:  Domain object   */
                       orte_rml_ofi.fi_info_list,                /* In:  Provider        */
                       &orte_rml_ofi.ep,    /* Out: Endpoint object */
-                      NULL);               /* Optional context     */
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                       NULL);               /* Optional context     */
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
                             "%s:%d: fi_endpoint failed: %s\n",
                             __FILE__, __LINE__, fi_strerror(-ret));
         goto error;
-    }
+     }
 
     /**
      * Save the maximum inject size.
@@ -380,63 +385,63 @@ rml_ofi_init(int* priority)
      *     - address vector of other endpoint addresses
      *     - dynamic memory-spanning memory region
      */
-    cq_attr.format = FI_CQ_FORMAT_TAGGED;
-    ret = fi_cq_open(orte_rml_ofi.domain, &cq_attr, &orte_rml_ofi.cq, NULL);
-    if (ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_cq_open failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
+     cq_attr.format = FI_CQ_FORMAT_CONTEXT;   //[A] changing to context from FI_CQ_FORMAT_TAGGED to check for segfault
+     ret = fi_cq_open(orte_rml_ofi.domain, &cq_attr, &orte_rml_ofi.cq, NULL);
+      if (ret) {
+         	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                              "%s:%d: fi_cq_open failed: %s\n",
+                              __FILE__, __LINE__, fi_strerror(-ret));
+          goto error;
+      }
 
     /**
      * The remote fi_addr will be stored in the ofi_endpoint struct.
      * So, we use the AV in "map" mode.
      */
-    av_attr.type = FI_AV_MAP;
-    ret = fi_av_open(orte_rml_ofi.domain, &av_attr, &orte_rml_ofi.av, NULL);
-    if (ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_av_open failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
+      av_attr.type = FI_AV_MAP;
+      ret = fi_av_open(orte_rml_ofi.domain, &av_attr, &orte_rml_ofi.av, NULL);
+      if (ret) {
+          opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                              "%s:%d: fi_av_open failed: %s\n",
+                              __FILE__, __LINE__, fi_strerror(-ret));
+          goto error;
+      }
 
     /**
      * Bind the CQ and AV to the endpoint object.
      */
-    ret = fi_ep_bind(orte_rml_ofi.ep,
-                     (fid_t)orte_rml_ofi.cq,
-                     FI_SEND | FI_RECV);
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_bind CQ-EP failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
+     ret = fi_ep_bind(orte_rml_ofi.ep,
+                      (fid_t)orte_rml_ofi.cq,
+                      FI_SEND | FI_RECV);
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "%s:%d: fi_bind CQ-EP failed: %s\n",
+                             __FILE__, __LINE__, fi_strerror(-ret));
+         goto error;
+     }
 
-    ret = fi_ep_bind(orte_rml_ofi.ep,
-                     (fid_t)orte_rml_ofi.av,
-                     0);
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_bind AV-EP failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
+     ret = fi_ep_bind(orte_rml_ofi.ep,
+                      (fid_t)orte_rml_ofi.av,
+                      0);
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "%s:%d: fi_bind AV-EP failed: %s\n",
+                             __FILE__, __LINE__, fi_strerror(-ret));
+         goto error;
+     }
 
     /**
      * Enable the endpoint for communication
      * This commits the bind operations.
      */
-    ret = fi_enable(orte_rml_ofi.ep);
-    if (0 != ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_enable failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
-    opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d right after fi_enable",__FILE__,__LINE__);
+     ret = fi_enable(orte_rml_ofi.ep);
+     if (0 != ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "%s:%d: fi_enable failed: %s\n",
+                             __FILE__, __LINE__, fi_strerror(-ret));
+         goto error;
+     }
+     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d right after fi_enable",__FILE__,__LINE__);
 
     /**
      * Free providers info since it's not needed anymore.
@@ -444,38 +449,24 @@ rml_ofi_init(int* priority)
     fi_freeinfo(hints);
     hints = NULL;
 
+
+    
     /**
      * Get our address.
      */
-    orte_rml_ofi.epnamelen = sizeof(orte_rml_ofi.ep_name);
-    ret = fi_getname((fid_t)orte_rml_ofi.ep,
-                     &orte_rml_ofi.ep_name[0],
-                     &orte_rml_ofi.epnamelen);
-    if (ret) {
-        opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_getname failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
+     orte_rml_ofi.epnamelen = sizeof(orte_rml_ofi.ep_name);
+     ret = fi_getname((fid_t)orte_rml_ofi.ep,
+                      &orte_rml_ofi.ep_name[0],
+                      &orte_rml_ofi.epnamelen);
+     if (ret) {
+         opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "%s:%d: fi_getname failed: %s\n",
+                             __FILE__, __LINE__, fi_strerror(-ret));
+         goto error;
+     }
 
+   
 
-   /*Close endpoint and all queues as we will reopen these when user requests to send specific provider */ 
-    if (orte_rml_ofi.av) {
-        (void) fi_close((fid_t)orte_rml_ofi.av);
-    }
-    if (orte_rml_ofi.cq) {
-        (void) fi_close((fid_t)orte_rml_ofi.cq);
-    }
-    if (orte_rml_ofi.ep) {
-        (void) fi_close((fid_t)orte_rml_ofi.ep);
-    }
-    if (orte_rml_ofi.domain) {
-        (void) fi_close((fid_t)orte_rml_ofi.domain);
-    }
-    if (orte_rml_ofi.fabric) {
-        (void) fi_close((fid_t)orte_rml_ofi.fabric);
-    }
- 
     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d right before returning orte_rml_ofi.super",__FILE__,__LINE__);
     OBJ_CONSTRUCT(&orte_rml_ofi.exceptions, opal_list_t);
     init_done = true;
@@ -527,6 +518,27 @@ orte_rml_ofi_fini(void)
         OBJ_RELEASE(item);
     }
     OBJ_DESTRUCT(&orte_rml_ofi.exceptions);
+
+    if(orte_rml_ofi.fi_info_list) {
+	(void) fi_freeinfo(orte_rml_ofi.fi_info_list);
+    }
+
+   /* Close endpoint and all queues */ 
+    if (orte_rml_ofi.av) {
+        (void) fi_close((fid_t)orte_rml_ofi.av);
+    }
+    if (orte_rml_ofi.cq) {
+        (void) fi_close((fid_t)orte_rml_ofi.cq);
+    }
+    if (orte_rml_ofi.ep) {
+        (void) fi_close((fid_t)orte_rml_ofi.ep);
+    }
+    if (orte_rml_ofi.domain) {
+        (void) fi_close((fid_t)orte_rml_ofi.domain);
+    }
+    if (orte_rml_ofi.fabric) {
+        (void) fi_close((fid_t)orte_rml_ofi.fabric);
+    }
 
     /* clear the base receive */
     //[A] 
