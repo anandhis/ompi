@@ -59,7 +59,7 @@ orte_rml_component_t mca_rml_ofi_component = {
 
 orte_rml_ofi_module_t orte_rml_ofi = {
     {
-         .enable_comm = orte_rml_ofi_init,   //  [A] should we be calling this ?
+         .enable_comm = orte_rml_ofi_enable_comm,   //  [A] should we be calling this ?
         .finalize = orte_rml_ofi_fini,
 	.query_transports = orte_rml_ofi_query_transports,
 
@@ -318,8 +318,8 @@ rml_ofi_init(int* priority)
 
     /*[A] added for debug purpose - removing it - Print the provider info 
     print_transports_query(); 
-    print_provider_list_info(orte_rml_ofi.fi_info_list);
-    */
+    print_provider_list_info(orte_rml_ofi.fi_info_list); */
+    
     
     
     /**
@@ -496,11 +496,11 @@ error:
 }
 
 int
-orte_rml_ofi_init(void)
+orte_rml_ofi_enable_comm(void)
 {
     /* enable the base receive to get updates on contact info */
     orte_rml_base_comm_start();
-    opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_ofi_init() %s:%d", __FILE__,__LINE__);
+    opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_ofi_enable_comm() %s:%d", __FILE__,__LINE__);
     return ORTE_SUCCESS;
 }
 
