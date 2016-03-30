@@ -65,7 +65,7 @@ typedef struct {
 ORTE_MODULE_DECLSPEC extern orte_rml_component_t mca_rml_ofi_component;
 extern orte_rml_ofi_module_t orte_rml_ofi;
 
-int orte_rml_ofi_init(void);
+int orte_rml_ofi_enable_comm(void);
 void orte_rml_ofi_fini(void);
 int orte_rml_ofi_ft_event(int state);
 int orte_rml_ofi_query_transports(opal_value_t **providers);
