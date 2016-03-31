@@ -32,7 +32,7 @@ static int my_priority=3;  // [A] - need to make this a #define or constant and 
 static orte_rml_base_module_t* rml_ofi_init(int* priority);  // [A] changed to refer to use internal base orte_rml_base_module_t
 static int rml_ofi_open(void);
 static int rml_ofi_close(void);
-void print_provider_list_info (struct fi_info *fi );
+
 
 /**
  * component definition
@@ -72,10 +72,14 @@ static bool init_done = false;
 static int
 rml_ofi_open(void)
 {
-    orte_rml_ofi.domain =  NULL;
-    orte_rml_ofi.av     =  NULL;
-    orte_rml_ofi.cq     =  NULL;
-    orte_rml_ofi.ep     =  NULL;
+     /* Close endpoint and all queues */
+    for( uint8_t conduit_id=0; conduit_id < MAX_CONDUIT ; conduit_id++) {
+        orte_rml_ofi.ofi_conduits[conduit_id].fabric =  NULL;
+        orte_rml_ofi.ofi_conduits[conduit_id].domain =  NULL;
+        orte_rml_ofi.ofi_conduits[conduit_id].av     =  NULL;
+        orte_rml_ofi.ofi_conduits[conduit_id].cq     =  NULL;
+        orte_rml_ofi.ofi_conduits[conduit_id].ep     =  NULL;
+    }
     opal_output_verbose(1,orte_rml_base_framework.framework_output," from %s:%d rml_ofi_open()",__FILE__,__LINE__);
     return ORTE_SUCCESS;
 }
@@ -143,9 +147,9 @@ int orte_rml_ofi_query_transports(opal_value_t **providers)
         //opal_output_verbose(10,orte_rml_base_framework.framework_output," \n allocating providers to new opal_value_t %s:%d",__FILE__,__LINE__);
     	*providers = OBJ_NEW(opal_value_t);
     }
-    
+
     providers_list = *providers;
-    //opal_output_verbose(10,orte_rml_base_framework.framework_output,"*providers = %x, providers_list= %x",*providers,providers_list); 
+    //opal_output_verbose(10,orte_rml_base_framework.framework_output,"*providers = %x, providers_list= %x",*providers,providers_list);
     cur_fi = orte_rml_ofi.fi_info_list;
     //Create the opal_value_t list in which each item is an opal_list_t that holds the provider details
     opal_output_verbose(10,orte_rml_base_framework.framework_output,"Starting to add the providers in a loop from orte_rml_ofi.fi_info_list %s:%d",__FILE__,__LINE__);
@@ -157,7 +161,7 @@ int orte_rml_ofi_query_transports(opal_value_t **providers)
 	   //if there is another provider in the array, then add another item to the providers_list
 	   next_provider = OBJ_NEW(opal_value_t);
           // opal_output_verbose(10,orte_rml_base_framework.framework_output," \n allocating the next item on opal_value_t list next_provider = 0x%x  %s:%d",next_provider,__FILE__,__LINE__);
-          // opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n &next_provider->super =%x ",&next_provider->super); 
+          // opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n &next_provider->super =%x ",&next_provider->super);
 	   providers_list->super.opal_list_next = &next_provider->super;   // is this same as next_provider (?)
 	   providers_list->super.opal_list_prev = &prev_provider->super;
            providers_list = (opal_value_t *)providers_list->super.opal_list_next;
@@ -185,9 +189,9 @@ int orte_rml_ofi_query_transports(opal_value_t **providers)
 	prev_provider = providers_list;
 	cur_fi = cur_fi->next;
     }
-   
-    opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n%s:%d Completed Query Interface",__FILE__,__LINE__); 	
-   // opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n%s:%d Completed Query Interface",__FILE__,__LINE__); 	
+
+    opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n%s:%d Completed Query Interface",__FILE__,__LINE__);
+   // opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n%s:%d Completed Query Interface",__FILE__,__LINE__);
     return ORTE_SUCCESS;
 }
 
@@ -200,9 +204,9 @@ void print_transports_query()
     int ret;
     int32_t *protocol_ptr, protocol;
     int prov_num=0;
-    
+
     protocol_ptr = &protocol;
-	
+
     opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n print_transports_query() Begin- %s:%d",__FILE__,__LINE__);
     opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n calling the orte_rml_ofi_query_transports() ");
     if( ORTE_SUCCESS == orte_rml_ofi_query_transports(&providers))
@@ -218,7 +222,7 @@ void print_transports_query()
 		ret = opal_value_unload(providers,(void **)&prov,OPAL_PTR);
 		if (ret == OPAL_SUCCESS) {
     		   // opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n %s:%d opal_value_unload() succeeded, opal_list* prov = %x",
-                     //                                                                                                     __FILE__,__LINE__,prov); 	
+                     //                                                                                                     __FILE__,__LINE__,prov);
 		    if( orte_get_attribute( prov, ORTE_PROTOCOL, (void **)&protocol_ptr,OPAL_UINT32)) {
 		      	opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n Protocol  : %d",*protocol_ptr);
 		    }
@@ -229,7 +233,7 @@ void print_transports_query()
 		    }
 		} else {
     		    opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n %s:%d opal_value_unload() failed, opal_list* prov = %x",
-                                                                                                                           __FILE__,__LINE__,prov); 	
+                                                                                                                           __FILE__,__LINE__,prov);
 		}
 		providers = (opal_value_t *)providers->super.opal_list_next;
     	//	opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n %s:%d - Moving on to next provider provders=%x",__FILE__,__LINE__,providers);
@@ -240,17 +244,18 @@ void print_transports_query()
     opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n End of print_transports_query() \n");
 }
 
-//[A] changing return type to refer to base rml module structure
 static orte_rml_base_module_t*
 rml_ofi_init(int* priority)
 {
     int ret, fi_version;
-    struct fi_info *hints;
+    struct fi_info *hints, *fabric_info;
     struct fi_cq_attr cq_attr = {0};
     struct fi_av_attr av_attr = {0};
     char ep_name[FI_NAME_MAX] = {0};
     size_t namelen;
-    
+    uint8_t conduit_id = 0; //[A]
+
+
 
     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d Entering rml_ofi_init()",__FILE__,__LINE__);
 
@@ -276,7 +281,7 @@ rml_ofi_init(int* priority)
         opal_output_verbose(1, orte_rml_base_framework.framework_output,
                             "%s:%d: Could not allocate fi_info\n",
                             __FILE__, __LINE__);
-        goto error;
+        return NULL;
     }
 
     /**
@@ -285,18 +290,16 @@ rml_ofi_init(int* priority)
      * threading:  Disable locking
      * control_progress:  enable async progress
      */
-    //[Anandhi] For debug purpose removing this inorder to check if the query works when multiple providers are listed 
-    //[A]     
-    hints->ep_attr->type      = FI_EP_RDM;      /* Reliable datagram         */
-    // hints->domain_attr->threading        = FI_THREAD_ENDPOINT;  [A] by default this is FI_THREAD_SAFE leave it at that 
-    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+     hints->ep_attr->type      = FI_EP_RDM;      /* Reliable datagram         */
+     // hints->domain_attr->threading        = FI_THREAD_ENDPOINT;  [A] by default this is FI_THREAD_SAFE leave it at that
+     hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
 
     /**
      * FI_VERSION provides binary backward and forward compatibility support
      * Specify the version of OFI is coded to, the provider will select struct
      * layouts that are compatible with this version.
      */
-    fi_version = FI_VERSION(1, 0);
+     fi_version = FI_VERSION(1, 0);
 
     /**
      * fi_getinfo:  returns information about fabric  services for reaching a
@@ -313,135 +316,172 @@ rml_ofi_init(int* priority)
         opal_output_verbose(1, orte_rml_base_framework.framework_output,
                             "%s:%d: fi_getinfo failed: %s\n",
                             __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
+    } else {
+
+        /*[A] added for debug purpose - removing it - Print the provider info
+        print_transports_query();
+        print_provider_list_info(orte_rml_ofi.fi_info_list);
+        */
+
+        /** [A] create the OFI objects for each transport in the node and store it in the ofi_conduits array **/
+        for( fabric_info = orte_rml_ofi.fi_info_list, conduit_id = 0; NULL != fabric_info; fabric_info = fabric_info->next, conduit_id++)
+        {
+            orte_rml_ofi.ofi_conduits[conduit_id].conduit_id = conduit_id;
+            orte_rml_ofi.ofi_conduits[conduit_id].fabric_info = fabric_info;
+
+            /**
+            * Open fabric
+            * The getinfo struct returns a fabric attribute struct that can be used to
+            * instantiate the virtual or physical network. This opens a "fabric
+            * provider". See man fi_fabric for details.
+            */
+
+            ret = fi_fabric(fabric_info->fabric_attr,         /* In:  Fabric attributes             */
+                            &orte_rml_ofi.ofi_conduits[conduit_id].fabric,  /* Out: Fabric handle */
+                            NULL);                           /* Optional context for fabric events */
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                "%s:%d: fi_fabric failed: %s\n",
+                                __FILE__, __LINE__, fi_strerror(-ret));
+                    free_conduit_resources(conduit_id);
+                    continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+
+            /**
+            * Create the access domain, which is the physical or virtual network or
+            * hardware port/collection of ports.  Returns a domain object that can be
+            * used to create endpoints.  See man fi_domain for details.
+            */
+            ret = fi_domain(orte_rml_ofi.ofi_conduits[conduit_id].fabric,  /* In:  Fabric object */
+                            orte_rml_ofi.fi_info_list,                 /* In:  Provider          */
+                            &orte_rml_ofi.ofi_conduits[conduit_id].domain, /* Out: Domain oject  */
+                            NULL);                         /* Optional context for domain events */
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_domain failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            /**
+            * Create a transport level communication endpoint.  To use the endpoint,
+            * it must be bound to completion counters or event queues and enabled,
+            * and the resources consumed by it, such as address vectors, counters,
+            * completion queues, etc.
+            * see man fi_endpoint for more details.
+            */
+            ret = fi_endpoint(orte_rml_ofi.ofi_conduits[conduit_id].domain, /* In:  Domain object   */
+                            orte_rml_ofi.fi_info_list,                      /* In:  Provider        */
+                            &orte_rml_ofi.ofi_conduits[conduit_id].ep,    /* Out: Endpoint object */
+                            NULL);                                      /* Optional context     */
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_endpoint failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            /**
+            * Save the maximum inject size.
+            */
+            // orte_rml_ofi.max_inject_size = prov->tx_attr->inject_size;
+
+            /**
+            * Create the objects that will be bound to the endpoint.
+            * The objects include:
+            *     - completion queue for events
+            *     - address vector of other endpoint addresses
+            *     - dynamic memory-spanning memory region
+            */
+            cq_attr.format = FI_CQ_FORMAT_CONTEXT;
+            ret = fi_cq_open(orte_rml_ofi.ofi_conduits[conduit_id].domain, &cq_attr, &orte_rml_ofi.ofi_conduits[conduit_id].cq, NULL);
+            if (ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                "%s:%d: fi_cq_open failed: %s\n",
+                                __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            /**
+            * The remote fi_addr will be stored in the ofi_endpoint struct.
+            * So, we use the AV in "map" mode.
+            */
+            av_attr.type = FI_AV_MAP;
+            ret = fi_av_open(orte_rml_ofi.ofi_conduits[conduit_id].domain, &av_attr, &orte_rml_ofi.ofi_conduits[conduit_id].av, NULL);
+            if (ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_av_open failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            /**
+            * Bind the CQ and AV to the endpoint object.
+            */
+            ret = fi_ep_bind(orte_rml_ofi.ofi_conduits[conduit_id].ep,
+                            (fid_t)orte_rml_ofi.ofi_conduits[conduit_id].cq,
+                            FI_SEND | FI_RECV);
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_bind CQ-EP failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            ret = fi_ep_bind(orte_rml_ofi.ofi_conduits[conduit_id].ep,
+                            (fid_t)orte_rml_ofi.ofi_conduits[conduit_id].av,
+                            0);
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_bind AV-EP failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+
+            /**
+            * Enable the endpoint for communication
+            * This commits the bind operations.
+            */
+            ret = fi_enable(orte_rml_ofi.ofi_conduits[conduit_id].ep);
+            if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_enable failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+            opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d right after fi_enable",__FILE__,__LINE__);
+
+
+            /**
+            * Get our address.
+            */
+            orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = sizeof(orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
+            ret = fi_getname((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].ep,
+                            &orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0],
+                            &orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
+            if (ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_getname failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                /* abort this current transport, but check if next transport can be opened */
+                continue;
+            }
+
+        }
     }
 
-    /*[A] added for debug purpose - removing it - Print the provider info 
-    print_transports_query(); 
-    print_provider_list_info(orte_rml_ofi.fi_info_list); */
-    
-    
-    
-    /**
-     * Open fabric
-     * The getinfo struct returns a fabric attribute struct that can be used to
-     * instantiate the virtual or physical network. This opens a "fabric
-     * provider". See man fi_fabric for details.
-     */
-
-     ret = fi_fabric(orte_rml_ofi.fi_info_list->fabric_attr,    /* In:  Fabric attributes             */
-                   &orte_rml_ofi.fabric, /* Out: Fabric handle                 */
-                     NULL);                /* Optional context for fabric events */
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_fabric failed: %s\n",
-                           __FILE__, __LINE__, fi_strerror(-ret));
-       goto error;
-     }
- 
-    /**
-     * Create the access domain, which is the physical or virtual network or
-     * hardware port/collection of ports.  Returns a domain object that can be
-     * used to create endpoints.  See man fi_domain for details.
-     */
-     ret = fi_domain(orte_rml_ofi.fabric,  /* In:  Fabric object                 */
-                     orte_rml_ofi.fi_info_list,                 /* In:  Provider                      */
-                   &orte_rml_ofi.domain, /* Out: Domain oject                  */
-                     NULL);                /* Optional context for domain events */
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                             "%s:%d: fi_domain failed: %s\n",
-                             __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
-
-    /**
-     * Create a transport level communication endpoint.  To use the endpoint,
-     * it must be bound to completion counters or event queues and enabled,
-     * and the resources consumed by it, such as address vectors, counters,
-     * completion queues, etc.
-     * see man fi_endpoint for more details.
-     */
-     ret = fi_endpoint(orte_rml_ofi.domain, /* In:  Domain object   */
-                      orte_rml_ofi.fi_info_list,                /* In:  Provider        */
-                      &orte_rml_ofi.ep,    /* Out: Endpoint object */
-                       NULL);               /* Optional context     */
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                            "%s:%d: fi_endpoint failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-     }
-
-    /**
-     * Save the maximum inject size.
-     */
-    // orte_rml_ofi.max_inject_size = prov->tx_attr->inject_size;
-
-    /**
-     * Create the objects that will be bound to the endpoint.
-     * The objects include:
-     *     - completion queue for events
-     *     - address vector of other endpoint addresses
-     *     - dynamic memory-spanning memory region
-     */
-     cq_attr.format = FI_CQ_FORMAT_CONTEXT;   //[A] changing to context from FI_CQ_FORMAT_TAGGED to check for segfault
-     ret = fi_cq_open(orte_rml_ofi.domain, &cq_attr, &orte_rml_ofi.cq, NULL);
-      if (ret) {
-         	opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                              "%s:%d: fi_cq_open failed: %s\n",
-                              __FILE__, __LINE__, fi_strerror(-ret));
-          goto error;
-      }
-
-    /**
-     * The remote fi_addr will be stored in the ofi_endpoint struct.
-     * So, we use the AV in "map" mode.
-     */
-      av_attr.type = FI_AV_MAP;
-      ret = fi_av_open(orte_rml_ofi.domain, &av_attr, &orte_rml_ofi.av, NULL);
-      if (ret) {
-          opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                              "%s:%d: fi_av_open failed: %s\n",
-                              __FILE__, __LINE__, fi_strerror(-ret));
-          goto error;
-      }
-
-    /**
-     * Bind the CQ and AV to the endpoint object.
-     */
-     ret = fi_ep_bind(orte_rml_ofi.ep,
-                      (fid_t)orte_rml_ofi.cq,
-                      FI_SEND | FI_RECV);
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                             "%s:%d: fi_bind CQ-EP failed: %s\n",
-                             __FILE__, __LINE__, fi_strerror(-ret));
-         goto error;
-     }
-
-     ret = fi_ep_bind(orte_rml_ofi.ep,
-                      (fid_t)orte_rml_ofi.av,
-                      0);
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                             "%s:%d: fi_bind AV-EP failed: %s\n",
-                             __FILE__, __LINE__, fi_strerror(-ret));
-         goto error;
-     }
-
-    /**
-     * Enable the endpoint for communication
-     * This commits the bind operations.
-     */
-     ret = fi_enable(orte_rml_ofi.ep);
-     if (0 != ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                             "%s:%d: fi_enable failed: %s\n",
-                             __FILE__, __LINE__, fi_strerror(-ret));
-         goto error;
-     }
-     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d right after fi_enable",__FILE__,__LINE__);
+    /** the number of conduits in the ofi_conduits[] **/
+    orte_rml_ofi.conduit_open_num = conduit_id;
 
     /**
      * Free providers info since it's not needed anymore.
@@ -450,48 +490,39 @@ rml_ofi_init(int* priority)
     hints = NULL;
 
 
-    
-    /**
-     * Get our address.
-     */
-     orte_rml_ofi.epnamelen = sizeof(orte_rml_ofi.ep_name);
-     ret = fi_getname((fid_t)orte_rml_ofi.ep,
-                      &orte_rml_ofi.ep_name[0],
-                      &orte_rml_ofi.epnamelen);
-     if (ret) {
-         opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                             "%s:%d: fi_getname failed: %s\n",
-                             __FILE__, __LINE__, fi_strerror(-ret));
-         goto error;
-     }
+    /* only if atleast one conduit was successfully opened then return the module */
+    if (0 < conduit_id ) {
+        opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                    "%s:%d conduits openened=%d returning orte_rml_ofi.super",__FILE__,__LINE__,conduit_id);
+        OBJ_CONSTRUCT(&orte_rml_ofi.exceptions, opal_list_t);
+        init_done = true;
+        return &orte_rml_ofi.super;
+    } else {
+        opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                    "%s:%d Failed to open any conduits",__FILE__,__LINE__,conduit_id);
+        return NULL;
+    }
+}
 
-   
+void free_conduit_resources( int conduit_id)
+{
 
-    opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d right before returning orte_rml_ofi.super",__FILE__,__LINE__);
-    OBJ_CONSTRUCT(&orte_rml_ofi.exceptions, opal_list_t);
-    init_done = true;
-    return &orte_rml_ofi.super;
-
-error:
-    if (hints) {
-        (void) fi_freeinfo(hints);
+    if (orte_rml_ofi.ofi_conduits[conduit_id].av) {
+        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].av);
     }
-    if (orte_rml_ofi.av) {
-        (void) fi_close((fid_t)orte_rml_ofi.av);
+    if (orte_rml_ofi.ofi_conduits[conduit_id].cq) {
+        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].cq);
     }
-    if (orte_rml_ofi.cq) {
-        (void) fi_close((fid_t)orte_rml_ofi.cq);
+    if (orte_rml_ofi.ofi_conduits[conduit_id].ep) {
+        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].ep);
     }
-    if (orte_rml_ofi.ep) {
-        (void) fi_close((fid_t)orte_rml_ofi.ep);
+    if (orte_rml_ofi.ofi_conduits[conduit_id].domain) {
+        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].domain);
     }
-    if (orte_rml_ofi.domain) {
-        (void) fi_close((fid_t)orte_rml_ofi.domain);
+    if (orte_rml_ofi.ofi_conduits[conduit_id].fabric) {
+        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].fabric);
     }
-    if (orte_rml_ofi.fabric) {
-        (void) fi_close((fid_t)orte_rml_ofi.fabric);
-    }
-    return NULL;
+    return;
 
 }
 
@@ -500,7 +531,7 @@ orte_rml_ofi_enable_comm(void)
 {
     /* enable the base receive to get updates on contact info */
     orte_rml_base_comm_start();
-    opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_ofi_enable_comm() %s:%d", __FILE__,__LINE__);
+    opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_enable_comm() %s:%d", __FILE__,__LINE__);
     return ORTE_SUCCESS;
 }
 
@@ -509,6 +540,7 @@ void
 orte_rml_ofi_fini(void)
 {
     opal_list_item_t *item;
+    uint8_t conduit_id;
 
 
     opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_ofi_fini() %s:%d", __FILE__,__LINE__);
@@ -523,26 +555,14 @@ orte_rml_ofi_fini(void)
 	(void) fi_freeinfo(orte_rml_ofi.fi_info_list);
     }
 
-   /* Close endpoint and all queues */ 
-    if (orte_rml_ofi.av) {
-        (void) fi_close((fid_t)orte_rml_ofi.av);
-    }
-    if (orte_rml_ofi.cq) {
-        (void) fi_close((fid_t)orte_rml_ofi.cq);
-    }
-    if (orte_rml_ofi.ep) {
-        (void) fi_close((fid_t)orte_rml_ofi.ep);
-    }
-    if (orte_rml_ofi.domain) {
-        (void) fi_close((fid_t)orte_rml_ofi.domain);
-    }
-    if (orte_rml_ofi.fabric) {
-        (void) fi_close((fid_t)orte_rml_ofi.fabric);
+    /* Close endpoint and all queues */
+    for( conduit_id=0;conduit_id<orte_rml_ofi.conduit_open_num;conduit_id++) {
+         free_conduit_resources(conduit_id);
     }
 
     /* clear the base receive */
-    //[A] 
-    /*3/25 -> this needs to be moved to stub?
+    //[A]
+    /*3/25 -> moving this to orte_rml_stub
     orte_rml_base_comm_stop();
     */
 
@@ -612,11 +632,13 @@ orte_rml_ofi_ft_event(int state) {
 }
 #endif
 
+
 /*This fn is dummy need to fixed */
 char* orte_rml_ofi_get_uri(void){
 
+     uint8_t conduit_id = 1;
      opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_ofi_fini() %s:%d", __FILE__,__LINE__);
-	return orte_rml_ofi.ep_name;
+	return orte_rml_ofi.ofi_conduits[conduit_id].ep_name;  // returning the first ep name for now
 }
 
 void orte_rml_ofi_set_uri(const char*uri){
@@ -749,4 +771,5 @@ void orte_rml_ofi_exception_callback(orte_process_name_t *peer,
 void orte_rml_ofi_purge(orte_process_name_t *peer)
 {
 }
+
 
