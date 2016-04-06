@@ -14,7 +14,7 @@
 
 #include "opal/dss/dss_types.h"
 #include "opal/mca/event/event.h"
-
+#include "opal/mca/pmix/pmix.h"
 #include "orte/mca/rml/base/base.h"
 
 #include <rdma/fabric.h>
@@ -29,6 +29,10 @@ BEGIN_C_DECLS
 //[A]
 /** the maximum open conduit - assuming system will have no more than 20 transports*/
 #define MAX_CONDUIT  20
+
+/** The OPAL key values  **/
+#define OPAL_RML_OFI_FI_SOCKADDR_IN                "rml.ofi.fisockaddrin"     // (char*)  ofi socket address (type IN) of the node process is running on
+#define OPAL_RML_OFI_FI_ADDR_PSMX                  "rml.ofi.fiaddrpsmx"       // (char*)  ofi socket address (type PSM) of the node process is running on
 
 /** This structure will hold the ep and all ofi objects for each transport
 and also the corresponding fi_info

@@ -107,6 +107,7 @@ main(int argc, char *argv[]){
      * Init
      */
     orte_init(&argc, &argv, ORTE_PROC_NON_MPI);
+   //  orte_init(&argc, &argv, ORTE_PROC_MPI);
 
         /*
      * Runtime Messaging Layer  - added this as RML was not being initialised in the app process, 

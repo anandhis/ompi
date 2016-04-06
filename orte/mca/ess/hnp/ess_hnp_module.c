@@ -315,6 +315,8 @@ static int rte_init(void)
         }
     }
 
+  
+ 
     /* Setup the communication infrastructure */
     /*
      * OOB Layer
@@ -620,19 +622,19 @@ static int rte_init(void)
         goto error;
     }
     /* set the event base */
-    opal_pmix_base_set_evbase(orte_event_base);
+   opal_pmix_base_set_evbase(orte_event_base);
 
     /* setup the routed info - the selected routed component
      * will know what to do.
      */
-    if (ORTE_SUCCESS != (ret = orte_routed.init_routes(ORTE_PROC_MY_NAME->jobid, NULL))) {
+     if (ORTE_SUCCESS != (ret = orte_routed.init_routes(ORTE_PROC_MY_NAME->jobid, NULL))) {
         ORTE_ERROR_LOG(ret);
         error = "orte_routed.init_routes";
         goto error;
     }
 
     /* setup the PMIx server */
-    if (ORTE_SUCCESS != (ret = pmix_server_init())) {
+   if (ORTE_SUCCESS != (ret = pmix_server_init())) {
         ORTE_ERROR_LOG(ret);
         error = "pmix server init";
         goto error;
