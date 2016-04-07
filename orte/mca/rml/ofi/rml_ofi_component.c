@@ -80,9 +80,48 @@ rml_ofi_open(void)
         orte_rml_ofi.ofi_conduits[conduit_id].cq     =  NULL;
         orte_rml_ofi.ofi_conduits[conduit_id].ep     =  NULL;
 		orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0] = 0;
+		orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = 0;
+		orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv = NULL;
+		orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = NULL;
+		orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = 0;
     }
     opal_output_verbose(1,orte_rml_base_framework.framework_output," from %s:%d rml_ofi_open()",__FILE__,__LINE__);
     return ORTE_SUCCESS;
+}
+
+
+void free_conduit_resources( int conduit_id)
+{
+
+	if (orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].av) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].av);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].cq) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].cq);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].ep) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].ep);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].domain) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].domain);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].fabric) {
+         CLOSE_FID(orte_rml_ofi.ofi_conduits[conduit_id].fabric);
+    }
+    if (orte_rml_ofi.ofi_conduits[conduit_id].rxbuf) {
+         free(orte_rml_ofi.ofi_conduits[conduit_id].rxbuf);
+    }
+
+	
+	orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0] = 0;
+	orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = 0;
+	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = NULL;
+	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = 0;
+	
+    return;
 }
 
 
@@ -154,7 +193,9 @@ int orte_rml_ofi_query_transports(opal_value_t **providers)
     opal_output_verbose(10,orte_rml_base_framework.framework_output," \n Begin of query_transports %s:%d",__FILE__,__LINE__);
     if ( NULL == *providers)
     {
-        //opal_output_verbose(10,orte_rml_base_framework.framework_output," \n allocating providers to new opal_value_t %s:%d",__FILE__,__LINE__);
+        /*opal_output_verbose(10,orte_rml_base_framework.framework_output,
+                    " \n allocating providers to new opal_value_t %s:%d",__FILE__,__LINE__);
+		*/
     	*providers = OBJ_NEW(opal_value_t);
     }
 
@@ -334,12 +375,14 @@ rml_ofi_init(int* priority)
         print_provider_list_info(orte_rml_ofi.fi_info_list);
         */
 
-        /** [A] create the OFI objects for each transport in the node and store it in the ofi_conduits array **/
+        /** [A] create the OFI objects for each transport in the system (fi_info_list) and store it in the ofi_conduits array **/
         for( fabric_info = orte_rml_ofi.fi_info_list, conduit_id = 0; NULL != fabric_info; fabric_info = fabric_info->next, conduit_id++)
         {
             orte_rml_ofi.ofi_conduits[conduit_id].conduit_id = conduit_id;
             orte_rml_ofi.ofi_conduits[conduit_id].fabric_info = fabric_info;
 
+			// set FI_MULTI_RECV flag for all recv operations
+			orte_rml_ofi.fi_info_list->rx_attr->op_flags = FI_MULTI_RECV;
             /**
             * Open fabric
             * The getinfo struct returns a fabric attribute struct that can be used to
@@ -355,7 +398,8 @@ rml_ofi_init(int* priority)
                                 "%s:%d: fi_fabric failed: %s\n",
                                 __FILE__, __LINE__, fi_strerror(-ret));
                     free_conduit_resources(conduit_id);
-                    continue;                               // abort this current transport, but check if next transport can be opened
+					/* abort this current transport, but check if next transport can be opened */
+                    continue;                               
             }
 
 
@@ -365,7 +409,7 @@ rml_ofi_init(int* priority)
             * used to create endpoints.  See man fi_domain for details.
             */
             ret = fi_domain(orte_rml_ofi.ofi_conduits[conduit_id].fabric,  /* In:  Fabric object */
-                            orte_rml_ofi.fi_info_list,                 /* In:  Provider          */
+                            fabric_info,                 				/* In:  Provider          */
                             &orte_rml_ofi.ofi_conduits[conduit_id].domain, /* Out: Domain oject  */
                             NULL);                         /* Optional context for domain events */
             if (0 != ret) {
@@ -384,8 +428,8 @@ rml_ofi_init(int* priority)
             * see man fi_endpoint for more details.
             */
             ret = fi_endpoint(orte_rml_ofi.ofi_conduits[conduit_id].domain, /* In:  Domain object   */
-                            orte_rml_ofi.fi_info_list,                      /* In:  Provider        */
-                            &orte_rml_ofi.ofi_conduits[conduit_id].ep,    /* Out: Endpoint object */
+                              fabric_info,                      /* In:  Provider        */
+                              &orte_rml_ofi.ofi_conduits[conduit_id].ep,    /* Out: Endpoint object */
                             NULL);                                      /* Optional context     */
             if (0 != ret) {
                 opal_output_verbose(1, orte_rml_base_framework.framework_output,
@@ -407,7 +451,7 @@ rml_ofi_init(int* priority)
             *     - address vector of other endpoint addresses
             *     - dynamic memory-spanning memory region
             */
-            cq_attr.format = FI_CQ_FORMAT_CONTEXT;
+            cq_attr.format = FI_CQ_FORMAT_DATA;
             ret = fi_cq_open(orte_rml_ofi.ofi_conduits[conduit_id].domain, &cq_attr, &orte_rml_ofi.ofi_conduits[conduit_id].cq, NULL);
             if (ret) {
                 opal_output_verbose(1, orte_rml_base_framework.framework_output,
@@ -487,21 +531,109 @@ rml_ofi_init(int* priority)
                 /* abort this current transport, but check if next transport can be opened */
                 continue;
             }
-
-
+			 switch ( orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format)
+            {
+                case  FI_SOCKADDR_IN :
+					opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d In FI_SOCKADDR_IN.  ",__FILE__,__LINE__);
+    				/* [TODO] The PMIX framework is not getting initialised in the 
+					*  mpirun process, so this hits the null case, this needs to be fixed
+					*/
+					if( opal_pmix.put ) {
+						/*  Address is of type sockaddr_in (IPv4) */
+						opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d sending Opal modex string.  ",__FILE__,__LINE__);
+                    	OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
+                                           	OPAL_RML_OFI_FI_SOCKADDR_IN,
+											orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
+											orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
+                        if (ORTE_SUCCESS != ret) {
+                			opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: OPAL_MODEX_SEND failed: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                			free_conduit_resources(conduit_id);
+							/*abort this current transport, but check if next transport can be opened*/
+                			continue;           
+            			}
+					}		
+					else
+					{
+						opal_output_verbose(1,orte_rml_base_framework.framework_output,"opal_pmix is NULL ");
+					}
+                    break;
+                case  FI_ADDR_PSMX :
+					opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d In FI_ADDR_PSMX.  ",__FILE__,__LINE__);
+                    /*   Address is of type Intel proprietery PSMX */
+                    OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
+                                           OPAL_RML_OFI_FI_ADDR_PSMX,orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
+													orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);		
+					if (ORTE_SUCCESS != ret) {
+                		opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                "%s:%d: OPAL_MODEX_SEND failed: %s\n",
+                                 __FILE__, __LINE__, fi_strerror(-ret));
+                		free_conduit_resources(conduit_id);
+						/*abort this current transport, but check if next transport can be opened*/
+                		continue;           
+            		}			
+                    break;
+                default:
+                     opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                     "%s:%d ERROR: Cannot register address, Unhandled addr_format - %d, ep_name - %s  ",
+                      __FILE__,__LINE__,orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format,
+                      orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
+            } 
 
             /**
             * Set the ANY_SRC address.
             */
             orte_rml_ofi.any_addr = FI_ADDR_UNSPEC;
 
+			/**
+ 	        *  Allocate tx,rx buffers and Post a multi-RECV buffer for each endpoint
+ 	        **/
+			//[TODO later]  For now not considering ep_attr prefix_size (add this later)
+			orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = DEFAULT_MULTI_BUF_SIZE * MULTI_BUF_SIZE_FACTOR;
+			orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = malloc(orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size);     
+			
+			//[TODO] the context is used as NULL - this code needs to be added to provide the right context
+			ret = fi_mr_reg(orte_rml_ofi.ofi_conduits[conduit_id].domain, 
+							orte_rml_ofi.ofi_conduits[conduit_id].rxbuf, 
+							orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size,
+							FI_RECV, 0, 0, 0, &orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv, NULL);
+			// [TODO] - do we need to use fi_setopt to set the FI_OPT_MIN_MULTI_RECV ?
+			ret = fi_recv(orte_rml_ofi.ofi_conduits[conduit_id].ep,
+						  orte_rml_ofi.ofi_conduits[conduit_id].rxbuf,
+						  orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size,
+						  fi_mr_desc(orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv), 
+						  0,0);  //[TODO] context param is 0, need to set it to right context var
             /**
-            *  Post a multi-RECV buffer for each endpoint
+            *  get the fd  and register the progress fn 
             **/
-
-            /**
-            *  Register the progress fn using WAIT_OBJECT
-            **/
+			ret = fi_control(&orte_rml_ofi.ofi_conduits[conduit_id].cq->fid, FI_GETWAIT, (void *) &orte_rml_ofi.ofi_conduits[conduit_id].fd);
+			if (0 != ret) {
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                                    "%s:%d: fi_control failed to get fd: %s\n",
+                                    __FILE__, __LINE__, fi_strerror(-ret));
+                free_conduit_resources(conduit_id);
+                continue;                               // abort this current transport, but check if next transport can be opened
+            }
+			// [TODO] use the opal_event_add to do a libevent add on the fd
+			/* - create the event
+			/* just ensure the send_event is not active 
+                if (!peer->send_ev_active) {
+                    opal_event_add(&peer->send_event, 0);
+                    peer->send_ev_active = true;
+                }
+			something like below has to be done but need to figure where to create and store the event - maybe in the conduit[] and the arg (last
+             param)   will be the entire conduit array ?
+			opal_event_set(mca_oob_tcp_module.ev_base,
+                       &peer->recv_event,
+                       peer->sd,
+                       OPAL_EV_READ|OPAL_EV_PERSIST,
+                       mca_oob_tcp_recv_handler,
+                       peer);
+			*/
 
         }
     }
@@ -530,29 +662,6 @@ rml_ofi_init(int* priority)
     }
 }
 
-void free_conduit_resources( int conduit_id)
-{
-
-    if (orte_rml_ofi.ofi_conduits[conduit_id].av) {
-        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].av);
-    }
-    if (orte_rml_ofi.ofi_conduits[conduit_id].cq) {
-        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].cq);
-    }
-    if (orte_rml_ofi.ofi_conduits[conduit_id].ep) {
-        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].ep);
-    }
-    if (orte_rml_ofi.ofi_conduits[conduit_id].domain) {
-        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].domain);
-    }
-    if (orte_rml_ofi.ofi_conduits[conduit_id].fabric) {
-        (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].fabric);
-    }
-    /*if (orte_rml_ofi.ofi_conduits[conduit_id].ep_name) {
-        (void) free(orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
-    }*/
-    return;
-}
 
 int
 orte_rml_ofi_enable_comm(void)
@@ -571,42 +680,8 @@ orte_rml_ofi_enable_comm(void)
             **/
 	for(int conduit_id = 0 ; conduit_id < orte_rml_ofi.conduit_open_num ; conduit_id++)
 	{
-            switch ( orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format)
-            {
-                case  FI_SOCKADDR_IN :
-					opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                            "%s:%d In FI_SOCKADDR_IN.  ",__FILE__,__LINE__);
-    
-					if( opal_pmix.put ) {
-						/*  Address is of type sockaddr_in (IPv4) */
-						opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                            "%s:%d sending Opal modex string.  ",__FILE__,__LINE__);
-                    	OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
-                                           	OPAL_RML_OFI_FI_SOCKADDR_IN,
-											orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
-											orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
-						//OPAL_MODEX_SEND(ret, OPAL_PMIX_GLOBAL, &mca_rml_ofi_component.rml_version,temp,6);
-					}		
-					else
-					{
-						opal_output_verbose(1,orte_rml_base_framework.framework_output,"opal_pmix is NULL ");
-					}
-                    break;
-                case  FI_ADDR_PSMX :
-					opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                            "%s:%d In FI_ADDR_PSMX.  ",__FILE__,__LINE__);
-                    /*   Address is of type Intel proprietery PSMX */
-                    /*OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
-                                           OPAL_RML_OFI_FI_ADDR_PSMX,orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
-													orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
-                    */
-					
-                    break;
-                default:
-                     opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                     "%s:%d ERROR: Cannot register address, Unhandled addr_format - %d, ep_name - %s  ",
-                      __FILE__,__LINE__,orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format,orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
-            } 
+
+           
 	}
 
     return ORTE_SUCCESS;
