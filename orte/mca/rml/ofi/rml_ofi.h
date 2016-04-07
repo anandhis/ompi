@@ -91,6 +91,9 @@ typedef struct {
    void *rxbuf;
 
    uint64_t rxbuf_size;
+	
+	 /* event,fd associated with the cq */ 
+	 int fd;
 
 } ofi_transport_conduit_t;
 
