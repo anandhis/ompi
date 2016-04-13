@@ -24,7 +24,7 @@
 #include <rdma/fi_errno.h>
 #include <rdma/fi_tagged.h>
 
-BEGIN_C_DECLS
+#include "rml_ofi_request.h"
 
 //[A]
 /** the maximum open conduit - assuming system will have no more than 20 transports*/
@@ -49,7 +49,18 @@ BEGIN_C_DECLS
 			fi_close(&(fd)->fid);	\
 			fd = NULL;				\
 		}							\
-	} while (0)
+	} while (0);
+
+
+#define RML_OFI_RETRY_UNTIL_DONE(FUNC)         \
+    do {                                       \
+        do {                                   \
+            ret = FUNC;                        \
+            if(OPAL_LIKELY(0 == ret)) {break;} \
+        } while(-FI_EAGAIN == ret);            \
+    } while(0);
+
+BEGIN_C_DECLS
 
 
 /** This structure will hold the ep and all ofi objects for each transport
@@ -95,6 +106,10 @@ typedef struct {
 	 /* event,fd associated with the cq */ 
 	 int fd;
 
+	/*event associated with progress fn */
+	opal_event_t progress_event;
+  bool progress_ev_active;
+
 } ofi_transport_conduit_t;
 
 
@@ -117,6 +132,11 @@ typedef struct {
     opal_list_t              queued_routing_messages;
     opal_event_t            *timer_event;
     struct timeval           timeout;
+	  
+		/* event base */
+		opal_event_base_t				*ev_base;   
+		//[ TODO] ?? is progress thread and other inits done in oob_tcp reqd ?
+
 } orte_rml_ofi_module_t;
 //[A]
 
@@ -127,6 +147,12 @@ int orte_rml_ofi_enable_comm(void);
 void orte_rml_ofi_fini(void);
 int orte_rml_ofi_ft_event(int state);
 int orte_rml_ofi_query_transports(opal_value_t **providers);
+int orte_rml_ofi_send_buffer_transport_nb(int conduit_id,
+                                              orte_process_name_t* peer,
+                                              struct opal_buffer_t* buffer,
+                                              orte_rml_tag_t tag,
+                                              orte_rml_buffer_callback_fn_t cbfunc,
+                                              void* cbdata);
 void free_conduit_resources( int conduit_id);
 void print_provider_list_info (struct fi_info *fi );
 
@@ -134,12 +160,13 @@ void print_provider_list_info (struct fi_info *fi );
 int orte_rml_ofi_progress_no_inline(void);
 
 __opal_attribute_always_inline__ static inline int
-orte_rml_ofi_progress(void)
+orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
 {	
 	ssize_t ret;
 	int count=0;	/* number of messages read and processed */
 	struct fi_cq_data_entry wc = { 0 };
 	struct fi_cq_err_entry error = { 0 };
+  orte_rml_ofi_request_t *ofi_req = NULL;
 
 	/**
     * Read the work completions from the CQ.
@@ -147,31 +174,30 @@ orte_rml_ofi_progress(void)
     * Call the request's callback.
   */
   while (true) {
-			/* Read the cq - for now read only the first transport/conduit cq
-			*	 [TODO later] qn:  which completion queue, should this be done in a loop ?  
+			/* Read the cq - that triggered the libevent to call this progress fn.
+			*	 [backup logic]  if this fails, then logic has to be re-written to check all cq in a loop ?  
 			*/
-      ret = fi_cq_read(orte_rml_ofi.ofi_conduits[0].cq, (void *)&wc, 1);  
+      ret = fi_cq_read(conduit->cq, (void *)&wc, 1);  
 			 if (0 < ret) {
        		count++;
        	  if (NULL != wc.op_context) {
-							/* [TODO] get the context from the wc and call the message handler
+							/* get the context from the wc and call the message handler */
 								ofi_req = TO_OFI_REQ(wc.op_context);
                 assert(ofi_req);
                 ret = ofi_req->event_callback(&wc, ofi_req);
-                if (OMPI_SUCCESS != ret) {
-                    opal_output(ompi_mtl_base_framework.framework_output,
-                                "Error returned by request event callback: %zd",
+                if (ORTE_SUCCESS != ret) {
+                    opal_output(orte_rml_base_framework.framework_output,
+                                "Error returned by OFI request event callback: %zd",
                                 ret);
                     abort();
                 }
-						*/
 					}
 			} else if (ret == -FI_EAVAIL) {
 		 				/**
              * An error occured and is being reported via the CQ.
              * Read the error and forward it to the upper layer.
              */
-            ret = fi_cq_readerr(orte_rml_ofi.ofi_conduits[0].cq,
+            ret = fi_cq_readerr(conduit->cq,
                                 &error,
                                 0);
             if (0 > ret) {
@@ -181,16 +207,16 @@ orte_rml_ofi_progress(void)
             }
 
             assert(error.op_context);
-						/* [TODO] get the context from wc and call the error handler
+						/* get the context from wc and call the error handler */
             ofi_req = TO_OFI_REQ(error.op_context);
             assert(ofi_req);
             ret = ofi_req->error_callback(&error, ofi_req);
-            if (OMPI_SUCCESS != ret) {
-                opal_output(ompi_mtl_base_framework.framework_output,
+            if (ORTE_SUCCESS != ret) {
+                opal_output(orte_rml_base_framework.framework_output,
                         "Error returned by request error callback: %zd",
                         ret);
                 abort();
-            } */
+            } 
         } else {
             /**
              * The CQ is empty. Return.
@@ -199,6 +225,21 @@ orte_rml_ofi_progress(void)
         }
   }
 	return count;
+}
+
+
+/*
+ * call the ofi_progress() fn to read the cq
+ * 
+ */
+int cq_progress_handler(int sd, short flags, void *cbdata)
+{
+    ofi_transport_conduit_t* conduit = (ofi_transport_conduit_t*)cbdata;
+		int count;
+ 	  /* call the progress fn to read the cq and process the message
+		*	 for the conduit */
+		count = orte_rml_ofi_progress(conduit);
+		return count;
 }
 END_C_DECLS
 

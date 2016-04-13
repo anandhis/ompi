@@ -61,7 +61,8 @@ orte_rml_ofi_module_t orte_rml_ofi = {
     {
          .enable_comm = orte_rml_ofi_enable_comm,   //  [A] should we be calling this ?
         .finalize = orte_rml_ofi_fini,
-	.query_transports = orte_rml_ofi_query_transports,
+		.query_transports = orte_rml_ofi_query_transports,
+		.send_buffer_transport_nb = orte_rml_ofi_send_buffer_transport_nb,
 
     }
 };
@@ -84,6 +85,7 @@ rml_ofi_open(void)
 		orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv = NULL;
 		orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = NULL;
 		orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = 0;
+		orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active = false;
     }
     opal_output_verbose(1,orte_rml_base_framework.framework_output," from %s:%d rml_ofi_open()",__FILE__,__LINE__);
     return ORTE_SUCCESS;
@@ -121,6 +123,10 @@ void free_conduit_resources( int conduit_id)
 	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = NULL;
 	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = 0;
 	
+	if( orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
+		opal_event_del( &orte_rml_ofi.ofi_conduits[conduit_id].progress_event);
+	}
+
     return;
 }
 
@@ -314,6 +320,9 @@ rml_ofi_init(int* priority)
     }
 
     *priority = 2;
+
+	/**Setup the evbase */
+	orte_rml_ofi.ev_base = opal_event_base_create();
 
     /**
      * Hints to filter providers
@@ -618,23 +627,21 @@ rml_ofi_init(int* priority)
                 free_conduit_resources(conduit_id);
                 continue;                               // abort this current transport, but check if next transport can be opened
             }
-			// [TODO] use the opal_event_add to do a libevent add on the fd
-			/* - create the event
-			/* just ensure the send_event is not active 
-                if (!peer->send_ev_active) {
-                    opal_event_add(&peer->send_event, 0);
-                    peer->send_ev_active = true;
-                }
-			something like below has to be done but need to figure where to create and store the event - maybe in the conduit[] and the arg (last
-             param)   will be the entire conduit array ?
-			opal_event_set(mca_oob_tcp_module.ev_base,
-                       &peer->recv_event,
-                       peer->sd,
-                       OPAL_EV_READ|OPAL_EV_PERSIST,
-                       mca_oob_tcp_recv_handler,
-                       peer);
-			*/
 
+			/* - create the event  that will wait on the fd*/
+			if (!orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
+                opal_event_add(&orte_rml_ofi.ofi_conduits[conduit_id].progress_event, 0);
+                orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active = true;
+            }
+			/* use the opal_event_set to do a libevent set on the fd
+			*  so when something is available to read, the cq_porgress_handler 
+			*  will be called */
+			opal_event_set(orte_rml_ofi.ev_base,
+                       &orte_rml_ofi.ofi_conduits[conduit_id].progress_event,
+                       orte_rml_ofi.ofi_conduits[conduit_id].fd,
+                       OPAL_EV_READ|OPAL_EV_PERSIST,
+                       cq_progress_handler,
+                       &orte_rml_ofi.ofi_conduits[conduit_id]);
         }
     }
 
@@ -703,14 +710,6 @@ orte_rml_ofi_fini(void)
     }
     OBJ_DESTRUCT(&orte_rml_ofi.exceptions);
 
-   
-
-    /* clear the base receive */
-    //[A]
-    /*3/25 -> moving this to orte_rml_stub
-    orte_rml_base_comm_stop();
-    */
-
 }
 
 #if OPAL_ENABLE_FT_CR == 1
@@ -776,6 +775,7 @@ orte_rml_ofi_ft_event(int state) {
    return ORTE_SUCCESS;
 }
 #endif
+
 
 
 /*This fn is dummy need to fixed */
@@ -917,4 +917,13 @@ void orte_rml_ofi_purge(orte_process_name_t *peer)
 {
 }
 
+int orte_rml_ofi_send_buffer_transport_nb(int conduit_id,
+                                              orte_process_name_t* peer,
+                                              struct opal_buffer_t* buffer,
+                                              orte_rml_tag_t tag,
+                                              orte_rml_buffer_callback_fn_t cbfunc,
+                                              void* cbdata)
+{
+	return ORTE_SUCCESS;
+}
 
