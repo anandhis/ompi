@@ -58,6 +58,12 @@ int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
 int orte_rml_ofi_error_callback(struct fi_cq_err_entry *error,
                            orte_rml_ofi_request_t* ofi_req)
 {
+	switch(error->err) {
+		default: 			
+			/* call the send-callback fn with error and return, also return failure status */
+			ofi_req->send->status = ORTE_ERR_CONDUIT_SEND_FAIL;     
+			ORTE_RML_SEND_COMPLETE(ofi_req->send);
+	}
 	return ORTE_SUCCESS;
 }
 
