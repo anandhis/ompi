@@ -45,8 +45,8 @@ int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
 	// call the callback fn of the sender
 	ofi_req->send->status = ORTE_SUCCESS;
 	ORTE_RML_SEND_COMPLETE(ofi_req->send);
-	//[TODO] free the ofi_req memory
-	//[TODO] need to return something
+	// [TODO] need to check for error before returning success
+	return ORTE_SUCCESS;
 }
 
 /** Error callback */
@@ -59,6 +59,33 @@ int orte_rml_ofi_error_callback(struct fi_cq_err_entry *error,
                            orte_rml_ofi_request_t* ofi_req)
 {
 	return ORTE_SUCCESS;
+}
+
+/** Recv handler */
+/* [Desc] This is called from the progress fn when a recv completion 
+** is received in the cq
+** wc [in] 	: the completion queue data entry */
+int orte_rml_ofi_recv_handler(struct fi_cq_data_entry *wc, uint8_t conduit_id) 
+{
+	orte_rml_ofi_msg_header_t msg_hdr;
+	uint32_t msglen;
+	char *data;
+
+	/*copy the header and data from buffer and pass it on 
+	** since this is the conduit recv buffer don't want it to be released as
+	** considering re-using it, so for now copying to newly allocated *data 
+	** the *data will be released by orte_rml_base functions */
+	
+	memcpy(&msg_hdr,wc->buf,sizeof(orte_rml_ofi_msg_header_t));
+	msglen = wc->len - sizeof(orte_rml_ofi_msg_header_t);
+	data = (char *)malloc(msglen);
+	memcpy(data,(wc->buf+sizeof(orte_rml_ofi_msg_header_t)),msglen);
+
+	//[TODO] check if the final destination is me, if not send it to next provider- how to do this logic ?
+	// assuming I am the destination, so sending to RML for now
+	ORTE_RML_POST_MESSAGE(&msg_hdr.origin, msg_hdr.tag, msg_hdr.seq_num,data,msglen);
+	
+	//[TODO]release the wc buffer (?) or reuse it in error to reset to beginning of buffer
 }
 
 
@@ -132,7 +159,8 @@ static void send_msg(int fd, short args, void *cbdata)
 
 	/* [DESC] we want to send the pid,seqnum,tag in addition to the data 
 	* 	copy all of this to header of message */
-	ofi_send_req->hdr.peer_id = ofi_send_req->send->dst;
+	ofi_send_req->hdr.dst = ofi_send_req->send->dst;
+	ofi_send_req->hdr.origin = ofi_send_req->send->origin;
 	ofi_send_req->hdr.seq_num = ofi_send_req->send->seq_num;
 	ofi_send_req->hdr.tag	  = ofi_send_req->send->tag;
 

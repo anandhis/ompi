@@ -169,6 +169,8 @@ int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
 int orte_rml_ofi_error_callback(struct fi_cq_err_entry *error,
                            orte_rml_ofi_request_t*);
 
+/* OFI Recv handler */
+int orte_rml_ofi_recv_handler(struct fi_cq_data_entry *wc, uint8_t conduit_id);
 END_C_DECLS
 
 #endif

@@ -355,6 +355,7 @@ orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
 			             ret);
 			             abort();
 			        }
+				    OBJ_RELEASE(ofi_req);
 				}
 				break;
 			case FI_RECV:
@@ -363,8 +364,8 @@ orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
                          "%s Receive completion received on conduitid %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          conduit->conduit_id);
-					// [TODO] implement the recv handler that will call the rml_base
-					// ret = orte_rml_recv_handler(&wc);
+						// [TODO] implement the recv handler that will call the rml_base
+						ret = orte_rml_ofi_recv_handler(&wc, conduit->conduit_id);
                 break;
 			}
 		} else if (ret == -FI_EAVAIL) {
