@@ -53,7 +53,8 @@ orte_rml_base_module_t orte_rml = {
     orte_rml_API_del_exception_handler,
     orte_rml_API_ft_event,
     orte_rml_API_purge,
-    orte_rml_API_query_transports
+    orte_rml_API_query_transports,
+    orte_rml_API_send_buffer_transport_nb
 };
 
 orte_rml_base_t orte_rml_base = {{{0}}};
@@ -215,11 +216,6 @@ int orte_rml_base_select(void)
         }
    }
   
-    /*[A] - debug
-    opal_value_t *providers=NULL;
-    orte_rml.query_transports(&providers); */
-    //[A] = end debug
-
     return ORTE_SUCCESS;
 }
 

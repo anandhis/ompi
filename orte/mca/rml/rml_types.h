@@ -178,6 +178,11 @@ BEGIN_C_DECLS
 #define ORTE_RML_TAG_NTOH(t) ntohl(t)
 #define ORTE_RML_TAG_HTON(t) htonl(t)
 
+/*** length of the tag. change this when type of orte_rml_tag_t is changed ***/
+/*** max valu in unit32_t is 0xFFFF_FFFF when converted to char this is 8  **
+#define ORTE_RML_TAG_T_CHAR_LEN   8
+#define ORTE_RML_TAG_T_SPRINT	 "%8x" */
+
 /**
  * Message matching tag
  *

@@ -10,10 +10,9 @@
 #ifndef ORTE_RML_OFI_REQUEST_H
 #define ORTE_RML_OFI_REQUEST_H
 
-#include "rml_ofi.h"
 
 #define TO_OFI_REQ(_ptr_ctx) \
-    container_of((_ptr_ctx), struct orte_rml_ofi_request_t, ctx)
+    container_of((_ptr_ctx), orte_rml_ofi_request_t, ctx)
 
 typedef enum {
     ORTE_RML_OFI_SEND,
@@ -22,8 +21,21 @@ typedef enum {
     ORTE_RML_OFI_PROBE
 } orte_rml_ofi_request_type_t;
 
-struct orte_rml_ofi_request_t {
-    orte_rml_send_request_t super;
+
+struct orte_rml_ofi_msg_header_t{
+	opal_process_name_t	peer_id;
+	uint32_t			seq_num;
+	orte_rml_tag_t		tag;		
+};
+typedef struct orte_rml_ofi_msg_header_t orte_rml_ofi_msg_header_t;
+
+typedef struct {
+	opal_object_t super;
+    orte_rml_send_t *send;
+
+    /** OFI conduit_id the request will use - this is 
+    *	the reference to element into the orte_rml_ofi.ofi_conduits[] **/
+    uint8_t conduit_id;
 
     /** OFI Request type */
     orte_rml_ofi_request_type_t type;
@@ -33,19 +45,12 @@ struct orte_rml_ofi_request_t {
 
     /** Completion count used by blocking and/or synchronous operations */
     volatile int completion_count;
-
-    /** Event callback */
-    int (*event_callback)(struct fi_cq_data_entry *wc,
-                          struct orte_rml_ofi_request_t*);
-
-    /** Error callback */
-    int (*error_callback)(struct fi_cq_err_entry *error,
-                          struct orte_rml_ofi_request_t*);
-
     
     /** Reference to the RML used to lookup */
     /*  source of an ANY_SOURCE Recv        */
     struct orte_rml_base_module_t* rml;
+
+	orte_rml_ofi_msg_header_t hdr;
 
     /** Pack buffer */
     void *buffer;
@@ -68,7 +73,8 @@ struct orte_rml_ofi_request_t {
 
     /** Pointer to Mrecv request to complete */ /*  [A] not sure what this is, but leaving it in here for now */
     struct mca_rml_request_t *mrecv_req;
-};
-typedef struct orte_rml_ofi_request_t orte_rml_ofi_request_t;
+} orte_rml_ofi_request_t;
+OBJ_CLASS_DECLARATION(orte_rml_ofi_request_t);
+//typedef struct orte_rml_ofi_request_t orte_rml_ofi_request_t;
 
 #endif

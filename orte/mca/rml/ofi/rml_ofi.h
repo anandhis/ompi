@@ -98,17 +98,17 @@ typedef struct {
     /** OFI memory region */
     struct fid_mr *mr_multi_recv;
 
-   /** buffer for tx and rx */
-   void *rxbuf;
-
-   uint64_t rxbuf_size;
+	/** buffer for tx and rx */
+    void *rxbuf;
+ 
+    uint64_t rxbuf_size;
 	
-	 /* event,fd associated with the cq */ 
-	 int fd;
+	/* event,fd associated with the cq */ 
+	int fd;
 
 	/*event associated with progress fn */
 	opal_event_t progress_event;
-  bool progress_ev_active;
+    bool progress_ev_active;
 
 } ofi_transport_conduit_t;
 
@@ -133,12 +133,13 @@ typedef struct {
     opal_event_t            *timer_event;
     struct timeval           timeout;
 	  
-		/* event base */
-		opal_event_base_t				*ev_base;   
-		//[ TODO] ?? is progress thread and other inits done in oob_tcp reqd ?
+	/* event base */
+	opal_event_base_t				*ev_base;   
+	//[ TODO] ?? is progress thread and other inits done in oob_tcp reqd - 
+	// yes reqd need to put the thread stuff in and use this eventbase
 
 } orte_rml_ofi_module_t;
-//[A]
+
 
 ORTE_MODULE_DECLSPEC extern orte_rml_component_t mca_rml_ofi_component;
 extern orte_rml_ofi_module_t orte_rml_ofi;
@@ -159,88 +160,15 @@ void print_provider_list_info (struct fi_info *fi );
 
 int orte_rml_ofi_progress_no_inline(void);
 
-__opal_attribute_always_inline__ static inline int
-orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
-{	
-	ssize_t ret;
-	int count=0;	/* number of messages read and processed */
-	struct fi_cq_data_entry wc = { 0 };
-	struct fi_cq_err_entry error = { 0 };
-  orte_rml_ofi_request_t *ofi_req = NULL;
 
-	/**
-    * Read the work completions from the CQ.
-    * From the completion's op_context, we get the associated OFI request.
-    * Call the request's callback.
-  */
-  while (true) {
-			/* Read the cq - that triggered the libevent to call this progress fn.
-			*	 [backup logic]  if this fails, then logic has to be re-written to check all cq in a loop ?  
-			*/
-      ret = fi_cq_read(conduit->cq, (void *)&wc, 1);  
-			 if (0 < ret) {
-       		count++;
-       	  if (NULL != wc.op_context) {
-							/* get the context from the wc and call the message handler */
-								ofi_req = TO_OFI_REQ(wc.op_context);
-                assert(ofi_req);
-                ret = ofi_req->event_callback(&wc, ofi_req);
-                if (ORTE_SUCCESS != ret) {
-                    opal_output(orte_rml_base_framework.framework_output,
-                                "Error returned by OFI request event callback: %zd",
-                                ret);
-                    abort();
-                }
-					}
-			} else if (ret == -FI_EAVAIL) {
-		 				/**
-             * An error occured and is being reported via the CQ.
-             * Read the error and forward it to the upper layer.
-             */
-            ret = fi_cq_readerr(conduit->cq,
-                                &error,
-                                0);
-            if (0 > ret) {
-                opal_output(orte_rml_base_framework.framework_output,
-                            "Error returned from fi_cq_readerr: %zd", ret);
-                abort();
-            }
+/** Send callback */
+int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
+                          orte_rml_ofi_request_t*);
 
-            assert(error.op_context);
-						/* get the context from wc and call the error handler */
-            ofi_req = TO_OFI_REQ(error.op_context);
-            assert(ofi_req);
-            ret = ofi_req->error_callback(&error, ofi_req);
-            if (ORTE_SUCCESS != ret) {
-                opal_output(orte_rml_base_framework.framework_output,
-                        "Error returned by request error callback: %zd",
-                        ret);
-                abort();
-            } 
-        } else {
-            /**
-             * The CQ is empty. Return.
-             */
-            break;
-        }
-  }
-	return count;
-}
+/** Error callback */
+int orte_rml_ofi_error_callback(struct fi_cq_err_entry *error,
+                           orte_rml_ofi_request_t*);
 
-
-/*
- * call the ofi_progress() fn to read the cq
- * 
- */
-int cq_progress_handler(int sd, short flags, void *cbdata)
-{
-    ofi_transport_conduit_t* conduit = (ofi_transport_conduit_t*)cbdata;
-		int count;
- 	  /* call the progress fn to read the cq and process the message
-		*	 for the conduit */
-		count = orte_rml_ofi_progress(conduit);
-		return count;
-}
 END_C_DECLS
 
 #endif
