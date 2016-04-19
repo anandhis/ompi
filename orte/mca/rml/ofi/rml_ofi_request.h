@@ -23,7 +23,8 @@ typedef enum {
 
 
 struct orte_rml_ofi_msg_header_t{
-	opal_process_name_t	peer_id;
+	opal_process_name_t	origin;  
+	opal_process_name_t	dst;
 	uint32_t			seq_num;
 	orte_rml_tag_t		tag;		
 };
