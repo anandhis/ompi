@@ -434,6 +434,30 @@ int orte_rml_API_query_transports(opal_value_t **providers)
 
 }
 
+int orte_rml_API_send_buffer_transport_nb(int conduit_id,
+                                              orte_process_name_t* peer,
+                                              struct opal_buffer_t* buffer,
+                                              orte_rml_tag_t tag,
+                                              orte_rml_buffer_callback_fn_t cbfunc,
+                                              void* cbdata)
+{
+    int rc = ORTE_ERR_UNREACH;
+    orte_rml_base_active_t *active;
+
+    opal_output_verbose(10,orte_rml_base_framework.framework_output,
+                         "%s rml:base:send_buffer_nb()",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+
+    /* cycle thru the actives and see who can send it */
+    OPAL_LIST_FOREACH(active, &orte_rml_base.actives, orte_rml_base_active_t) {
+        if (NULL != active->module->send_buffer_transport_nb) {
+            if (ORTE_SUCCESS == (rc = active->module->send_buffer_transport_nb(conduit_id,peer, buffer, tag, cbfunc, cbdata))) {
+                break;
+            }
+        }
+    }
+    return rc;
+}
 
 
 

@@ -449,6 +449,96 @@ typedef void (*orte_rml_module_purge_fn_t)(orte_process_name_t *peer);
 typedef int (*orte_rml_module_query_transports_fn_t)(opal_value_t **providers);
 
 
+/**
+ * Send a buffer non-blocking message through a specific transport
+ *
+ * Send a buffer to the specified peer.  The call
+ * will return immediately, although the buffer may not be modified
+ * until the completion callback is triggered.  The buffer *may* be
+ * passed to another call to send_nb before the completion callback is
+ * triggered.  The callback being triggered does not give any
+ * indication of remote completion.
+ *
+ * @param[in] conduit_id 
+ *                   The conduit_id associated with transport
+ *                   returned from orte_rml_module_query_transports_fn()
+ * @param[in] peer   Name of receiving process
+ * @param[in] buffer Pointer to buffer to be sent
+ * @param[in] tag    User defined tag for matching send/recv
+ * @param[in] cbfunc Callback function on message comlpetion
+ * @param[in] cbdata User data to provide during completion callback
+ *
+ * @retval ORTE_SUCCESS The message was successfully started
+ * @retval ORTE_ERR_BAD_PARAM One of the parameters was invalid
+ * @retval ORTE_ERR_ADDRESSEE_UNKNOWN Contact information for the
+ *                    receiving process is not available
+ * @retval ORTE_ERROR  An unspecified error occurred
+ */
+typedef int (*orte_rml_module_send_buffer_transport_nb_fn_t)(int conduit_id,
+                                                   orte_process_name_t* peer,
+                                                   struct opal_buffer_t* buffer,
+                                                   orte_rml_tag_t tag,
+                                                   orte_rml_buffer_callback_fn_t cbfunc,
+                                                   void* cbdata);
+
+
+/**
+ * Funtion prototype for callback from non-blocking iovec send and recv
+ *
+ * Funtion prototype for callback from non-blocking iovec send and recv.
+ * On send, the iovec pointer will be the same pointer passed to
+ * send_nb and count will equal the count given to send.
+ *
+ * On recv, the iovec pointer will be the address of a single iovec
+ * allocated and owned by the RML, not the process receiving the
+ * callback. Ownership of the data block can be transferred by setting
+ * a user variable to point to the data block, and setting the
+ * iovec->iov_base pointer to NULL.
+ *
+ * @note The parameter in/out parameters are relative to the user's callback
+ * function.
+ *
+ * @param[in] status  Completion status
+ * @param[in] peer    Opaque name of peer process
+ * @param[in] msg     Pointer to the array of iovec that was sent
+ *                    or to a single iovec that has been recvd
+ * @param[in] count   Number of iovecs in the array
+ * @param[in] tag     User defined tag for matching send/recv
+ * @param[in] cbdata  User data passed to send_nb()
+ */
+typedef void (*orte_rml_transport_callback_fn_t)(int status,
+                                       orte_process_name_t* peer,
+                                       struct iovec* msg,
+                                       int count,
+                                       orte_rml_tag_t tag,
+                                       void* cbdata);
+
+
+/**
+ * Funtion prototype for callback from non-blocking buffer send and receive
+ *
+ * Function prototype for callback from non-blocking buffer send and
+ * receive. On send, the buffer will be the same pointer passed to
+ * send_buffer_nb. On receive, the buffer will be allocated and owned
+ * by the RML, not the process receiving the callback.
+ *
+ * @note The parameter in/out parameters are relative to the user's callback
+ * function.
+ *
+ * @param[in] status  Completion status
+ * @param[in] peer    Name of peer process
+ * @param[in] buffer  Message buffer
+ * @param[in] tag     User defined tag for matching send/recv
+ * @param[in] cbdata  User data passed to send_buffer_nb() or recv_buffer_nb()
+ */
+typedef void (*orte_rml_buffer_transport_callback_fn_t)(int status,
+                                              orte_process_name_t* peer,
+                                              struct opal_buffer_t* buffer,
+                                              orte_rml_tag_t tag,
+                                              void* cbdata);
+
+
+
 /********* NEW RML QOS MESSAGING APIS *****************/
 /***** Questions *****/
 /*
@@ -620,6 +710,7 @@ struct orte_rml_base_module_t {
 
     /** Send non-blocking iovec message */
     orte_rml_module_send_nb_fn_t                 send_nb;
+
     /** Send non-blocking buffer message */
     orte_rml_module_send_buffer_nb_fn_t          send_buffer_nb;
 
@@ -645,6 +736,11 @@ struct orte_rml_base_module_t {
 
     /** Query information of transport in system */
     orte_rml_module_query_transports_fn_t       query_transports;
+
+    /** Send non-blocking buffer message */
+    orte_rml_module_send_buffer_transport_nb_fn_t  send_buffer_transport_nb;
+   
+    
 };
 /** Convenience typedef */
 typedef struct orte_rml_base_module_t orte_rml_base_module_t;

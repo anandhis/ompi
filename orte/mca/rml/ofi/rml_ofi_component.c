@@ -301,6 +301,128 @@ void print_transports_query()
     opal_output_verbose(10,orte_rml_base_framework.framework_output,"\n End of print_transports_query() \n");
 }
 
+
+
+
+/**
+	conduit [in]: the conduit_id that triggered the progress fn	
+ **/
+__opal_attribute_always_inline__ static inline int
+orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
+{	
+	ssize_t ret;
+	int count=0;	/* number of messages read and processed */
+	struct fi_cq_data_entry wc = { 0 };
+	struct fi_cq_err_entry error = { 0 };
+  	orte_rml_ofi_request_t *ofi_req; 
+
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s orte_rml_ofi_progress called for conduitid %d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         conduit->conduit_id);
+	/**
+    * Read the work completions from the CQ.
+    * From the completion's op_context, we get the associated OFI request.
+    * Call the request's callback.
+	*/
+	while (true) {
+		/* Read the cq - that triggered the libevent to call this progress fn.
+		*	 [backup logic]  if this fails, then logic has to be re-written to check all cq in a loop ?  
+		*/
+	    ret = fi_cq_read(conduit->cq, (void *)&wc, 1);  
+		if (0 < ret) {
+			count++;
+			// check the flags to see if this is a send-completion or receive
+			opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s cq read for conduitid %d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         conduit->conduit_id);
+			switch(wc.flags)
+			{
+			case FI_SEND: /* Send Completion */
+				opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                       "%s Send completion received on conduitid %d",
+                       ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                       conduit->conduit_id);
+				if (NULL != wc.op_context) {
+		  			/* get the context from the wc and call the message handler */
+					ofi_req = TO_OFI_REQ(wc.op_context);
+	        		assert(ofi_req);
+	        		ret = orte_rml_ofi_send_callback(&wc, ofi_req);
+	        		if (ORTE_SUCCESS != ret) {
+			        	opal_output(orte_rml_base_framework.framework_output,
+			            "Error returned by OFI request event callback: %zd",
+			             ret);
+			             abort();
+			        }
+				}
+				break;
+			case FI_RECV:
+			case FI_MULTI_RECV:
+					opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s Receive completion received on conduitid %d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         conduit->conduit_id);
+					// [TODO] implement the recv handler that will call the rml_base
+					// ret = orte_rml_recv_handler(&wc);
+                break;
+			}
+		} else if (ret == -FI_EAVAIL) {
+			/**
+	        * An error occured and is being reported via the CQ.
+	        * Read the error and forward it to the upper layer.
+	        */
+	        ret = fi_cq_readerr(conduit->cq,
+	                            &error,
+	                            0);
+	        if (0 > ret) {
+	            opal_output(orte_rml_base_framework.framework_output,
+	                            "Error returned from fi_cq_readerr: %zd", ret);
+	            abort();
+	        }
+	        assert(error.op_context);
+	  		/* get the context from wc and call the error handler */
+	        ofi_req = TO_OFI_REQ(error.op_context);
+	        assert(ofi_req);
+	        ret = orte_rml_ofi_error_callback(&error, ofi_req);
+	        if (ORTE_SUCCESS != ret) {
+	           opal_output(orte_rml_base_framework.framework_output,
+	           "Error returned by request error callback: %zd",
+	           ret);
+	           abort();
+	        } 
+		} else {
+            /**
+             * The CQ is empty. Return.
+             */
+            break;
+		}
+	}
+	return count;
+}
+
+
+/*
+ * call the ofi_progress() fn to read the cq
+ * 
+ */
+int cq_progress_handler(int sd, short flags, void *cbdata)
+{
+    ofi_transport_conduit_t* conduit = (ofi_transport_conduit_t*)cbdata;
+	int count;
+
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s cq_progress_handler called for conduitid %d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         conduit->conduit_id);
+
+ 	  /* call the progress fn to read the cq and process the message
+		*	 for the conduit */
+		count = orte_rml_ofi_progress(conduit);
+		return count;
+}
+
+
 static orte_rml_base_module_t*
 rml_ofi_init(int* priority)
 {
@@ -619,29 +741,32 @@ rml_ofi_init(int* priority)
             /**
             *  get the fd  and register the progress fn 
             **/
-			ret = fi_control(&orte_rml_ofi.ofi_conduits[conduit_id].cq->fid, FI_GETWAIT, (void *) &orte_rml_ofi.ofi_conduits[conduit_id].fd);
+			ret = fi_control(&orte_rml_ofi.ofi_conduits[conduit_id].cq->fid, FI_GETWAIT, 
+                            (void *) &orte_rml_ofi.ofi_conduits[conduit_id].fd);
 			if (0 != ret) {
                 opal_output_verbose(1, orte_rml_base_framework.framework_output,
                                     "%s:%d: fi_control failed to get fd: %s\n",
                                     __FILE__, __LINE__, fi_strerror(-ret));
                 free_conduit_resources(conduit_id);
-                continue;                               // abort this current transport, but check if next transport can be opened
+				/* abort this current transport, but check if next transport can be opened */
+                continue;                               
             }
 
 			/* - create the event  that will wait on the fd*/
-			if (!orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
-                opal_event_add(&orte_rml_ofi.ofi_conduits[conduit_id].progress_event, 0);
-                orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active = true;
-            }
+			// not a valid if if (!orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
 			/* use the opal_event_set to do a libevent set on the fd
 			*  so when something is available to read, the cq_porgress_handler 
 			*  will be called */
-			opal_event_set(orte_rml_ofi.ev_base,
+			opal_event_set(orte_event_base,
                        &orte_rml_ofi.ofi_conduits[conduit_id].progress_event,
                        orte_rml_ofi.ofi_conduits[conduit_id].fd,
                        OPAL_EV_READ|OPAL_EV_PERSIST,
                        cq_progress_handler,
                        &orte_rml_ofi.ofi_conduits[conduit_id]);
+            opal_event_add(&orte_rml_ofi.ofi_conduits[conduit_id].progress_event, 0);
+            orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active = true;
+           // }
+			
         }
     }
 
@@ -787,16 +912,16 @@ char* orte_rml_ofi_get_uri(void){
 }
 
 void orte_rml_ofi_set_uri(const char*uri){
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " \n From orte_rml_ofi_set_uri %s:%d",__FILE__,__LINE__));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " \n From orte_rml_ofi_set_uri %s:%d",__FILE__,__LINE__);
 //return ORTE_ERROR;
 }
 
 
 int orte_rml_ofi_ping(const char* uri,
                       const struct timeval* tv){
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             "\n From orte_rml_ofi_ping "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             "\n From orte_rml_ofi_ping ");
 	return ORTE_ERROR;
 }
 
@@ -804,8 +929,8 @@ int orte_rml_ofi_close_channel (orte_rml_channel_num_t channel,
                                 orte_rml_channel_callback_fn_t cbfunc,
                                 void* cbdata)
 {
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_close_channel "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_close_channel ");
 	return ORTE_SUCCESS;
 }
 
@@ -817,8 +942,8 @@ int orte_rml_ofi_send_channel_nb (orte_rml_channel_num_t channel_num,
                                   void* cbdata)
 {
 
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_send_channel_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_send_channel_nb ");
 	return ORTE_SUCCESS;
 }
 
@@ -827,8 +952,8 @@ int orte_rml_ofi_open_channel(orte_process_name_t * peer,
                               orte_rml_channel_callback_fn_t cbfunc,
                               void *cbdata)
 {
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_open_channel_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_open_channel_nb ");
 	return ORTE_SUCCESS;
 }
 
@@ -839,8 +964,8 @@ int orte_rml_ofi_send_buffer_nb(orte_process_name_t* peer,
                                 void* cbdata)
 {
 
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_send_buffer_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_send_buffer_nb ");
 	return ORTE_SUCCESS;
 }
 
@@ -850,8 +975,8 @@ int orte_rml_ofi_send_buffer_channel_nb (orte_rml_channel_num_t channel,
                                          orte_rml_send_buffer_channel_callback_fn_t cbfunc,
                                          void* cbdata)
 {
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_send_buffer_channel_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_send_buffer_channel_nb ");
 	return ORTE_SUCCESS;
 }
 
@@ -863,8 +988,8 @@ int orte_rml_ofi_send_nb(orte_process_name_t* peer,
                          void* cbdata)
 {
 
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_ofi_send_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_ofi_send_nb ");
 	return ORTE_SUCCESS;
 }
 
@@ -882,8 +1007,8 @@ void orte_rml_ofi_recv_nb(orte_process_name_t* peer,
                          void* cbdata)
 {
 
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_oob_recv_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_oob_recv_nb ");
 }
 
 
@@ -894,8 +1019,8 @@ void orte_rml_ofi_recv_buffer_nb(orte_process_name_t* peer,
                                 void* cbdata)
 {
 
-	OPAL_OUTPUT_VERBOSE((1, orte_rml_base_framework.framework_output,
-                             " from orte_rml_oob_recv_buffer_nb "));
+	opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                             " from orte_rml_oob_recv_buffer_nb ");
 }
 
 int orte_rml_ofi_add_exception(orte_rml_exception_callback_t cbfunc)
@@ -917,13 +1042,40 @@ void orte_rml_ofi_purge(orte_process_name_t *peer)
 {
 }
 
-int orte_rml_ofi_send_buffer_transport_nb(int conduit_id,
-                                              orte_process_name_t* peer,
-                                              struct opal_buffer_t* buffer,
-                                              orte_rml_tag_t tag,
-                                              orte_rml_buffer_callback_fn_t cbfunc,
-                                              void* cbdata)
+
+//[TODO] all below need to move to rml_ofi_send.c
+
+/*** RML-OFI-Transports Class Instances ***/
+/*
+static void send_cons(orte_rml_ofi_send_t *ptr)
 {
-	return ORTE_SUCCESS;
+    ptr->cbdata = NULL;
+    ptr->iov = NULL;
+    ptr->buffer = NULL;
+    ptr->data = NULL;
+    ptr->seq_num = 0xFFFFFFFF;
 }
+OBJ_CLASS_INSTANCE(orte_rml_ofi_send_t,
+                   opal_list_item_t,
+                   send_cons, NULL);
+
+static void send_req_cons(orte_rml_ofi_send_request_t *ptr)
+{
+    OBJ_CONSTRUCT(&ptr->send, orte_rml_ofi_send_t);
+}
+OBJ_CLASS_INSTANCE(orte_rml_ofi_send_request_t,
+                   opal_object_t,
+                   send_req_cons, NULL);
+
+static void ofi_req_cons(orte_rml_ofi_request_t *ptr)
+{
+    OBJ_CONSTRUCT(&ptr->send, orte_rml_ofi_send_t);
+}
+OBJ_CLASS_INSTANCE(orte_rml_ofi_request_t,
+                   orte_rml_send_t,
+                   ofi_req_cons, NULL);*/
+
+
+
+
 
