@@ -674,7 +674,8 @@ rml_ofi_init(int* priority)
 					if( opal_pmix.put ) {
 						/*  Address is of type sockaddr_in (IPv4) */
 						opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                            "%s:%d sending Opal modex string.  ",__FILE__,__LINE__);
+                            "%s sending Opal modex string for conduit_it %d, epnamelen = %d  ",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),conduit_id,orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
                     	OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
                                            	OPAL_RML_OFI_FI_SOCKADDR_IN,
 											orte_rml_ofi.ofi_conduits[conduit_id].ep_name,

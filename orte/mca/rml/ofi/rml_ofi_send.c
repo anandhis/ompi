@@ -40,9 +40,12 @@ OBJ_CLASS_INSTANCE(orte_rml_ofi_request_t,
 int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
                            orte_rml_ofi_request_t* ofi_req) 
 {
-	assert(ofi_req->completion_count > 0);
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s orte_rml_ofi_send_callback called ",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
+    assert(ofi_req->completion_count > 0);
     ofi_req->completion_count--;
-	// call the callback fn of the sender
+    // call the callback fn of the sender
 	ofi_req->send->status = ORTE_SUCCESS;
 	ORTE_RML_SEND_COMPLETE(ofi_req->send);
 	// [TODO] need to check for error before returning success
@@ -58,6 +61,9 @@ int orte_rml_ofi_send_callback(struct fi_cq_data_entry *wc,
 int orte_rml_ofi_error_callback(struct fi_cq_err_entry *error,
                            orte_rml_ofi_request_t* ofi_req)
 {
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s orte_rml_ofi_error_callback called ",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
 	switch(error->err) {
 		default: 			
 			/* call the send-callback fn with error and return, also return failure status */
@@ -77,6 +83,9 @@ int orte_rml_ofi_recv_handler(struct fi_cq_data_entry *wc, uint8_t conduit_id)
 	uint32_t msglen;
 	char *data;
 
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s orte_rml_ofi_recv_callback called ",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
 	/*copy the header and data from buffer and pass it on 
 	** since this is the conduit recv buffer don't want it to be released as
 	** considering re-using it, so for now copying to newly allocated *data 
@@ -123,13 +132,17 @@ static void send_msg(int fd, short args, void *cbdata)
     snd->cbdata = req->send.cbdata;
 
     opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                         "%s send_msg to peer %s at tag %d",
+                         "%s send_msg_transport to peer %s at tag %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_NAME_PRINT(peer), tag);
 
 	
 	/* get the peer address by doing modex_receive 	*/
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s calling OPAL_MODEX_RECV_STRING ", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
 	OPAL_MODEX_RECV_STRING(ret, OPAL_RML_OFI_FI_SOCKADDR_IN, peer , (char **) &dest_ep_name, &dest_ep_namelen);
+    opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                         "%s  Return value from OPAL_MODEX_RECV_STRING - %d ", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret );
 	if ( OPAL_SUCCESS == ret) {
 		opal_output_verbose(1, orte_rml_base_framework.framework_output,
                          "%s OPAL_MODEX_RECV succeded, %s peer ep name obtained. length=%d",
