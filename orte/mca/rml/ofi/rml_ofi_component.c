@@ -72,13 +72,14 @@ static bool init_done = false;
 static int
 rml_ofi_open(void)
 {
-     /* Close endpoint and all queues */
+     /* Initialise endpoint and all queues */
     for( uint8_t conduit_id=0; conduit_id < MAX_CONDUIT ; conduit_id++) {
         orte_rml_ofi.ofi_conduits[conduit_id].fabric =  NULL;
         orte_rml_ofi.ofi_conduits[conduit_id].domain =  NULL;
         orte_rml_ofi.ofi_conduits[conduit_id].av     =  NULL;
         orte_rml_ofi.ofi_conduits[conduit_id].cq     =  NULL;
         orte_rml_ofi.ofi_conduits[conduit_id].ep     =  NULL;
+		orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0] = 0;
     }
     opal_output_verbose(1,orte_rml_base_framework.framework_output," from %s:%d rml_ofi_open()",__FILE__,__LINE__);
     return ORTE_SUCCESS;
@@ -89,6 +90,15 @@ static int
 rml_ofi_close(void)
 {
     opal_output_verbose(10,orte_rml_base_framework.framework_output," from %s:%d rml_ofi_close()",__FILE__,__LINE__);
+
+    if(orte_rml_ofi.fi_info_list) {
+	(void) fi_freeinfo(orte_rml_ofi.fi_info_list);
+    }
+
+    /* Close endpoint and all queues */
+    for( uint8_t conduit_id=0;conduit_id<orte_rml_ofi.conduit_open_num;conduit_id++) {
+         free_conduit_resources(conduit_id);
+    }
     return ORTE_SUCCESS;
 }
 
@@ -251,11 +261,9 @@ rml_ofi_init(int* priority)
     struct fi_info *hints, *fabric_info;
     struct fi_cq_attr cq_attr = {0};
     struct fi_av_attr av_attr = {0};
-    char ep_name[FI_NAME_MAX] = {0};
     size_t namelen;
+	char   ep_name[FI_NAME_MAX]= {0};
     uint8_t conduit_id = 0; //[A]
-
-
 
     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d Entering rml_ofi_init()",__FILE__,__LINE__);
 
@@ -290,9 +298,12 @@ rml_ofi_init(int* priority)
      * threading:  Disable locking
      * control_progress:  enable async progress
      */
+     hints->mode               = FI_CONTEXT;
      hints->ep_attr->type      = FI_EP_RDM;      /* Reliable datagram         */
-     // hints->domain_attr->threading        = FI_THREAD_ENDPOINT;  [A] by default this is FI_THREAD_SAFE leave it at that
-     hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+
+     hints->domain_attr->threading        = FI_THREAD_UNSPEC;
+     hints->domain_attr->control_progress = FI_PROGRESS_MANUAL; //[A]not clear if this needs to be AUTO or manual ?
+     hints->domain_attr->av_type          = FI_AV_MAP;
 
     /**
      * FI_VERSION provides binary backward and forward compatibility support
@@ -458,18 +469,18 @@ rml_ofi_init(int* priority)
                 continue;                               // abort this current transport, but check if next transport can be opened
             }
             opal_output_verbose(1,orte_rml_base_framework.framework_output,
-                            "%s:%d right after fi_enable",__FILE__,__LINE__);
+                            "%s:%d ep enabled for conduit_id - %d ",__FILE__,__LINE__,conduit_id);
 
 
             /**
-            * Get our address.
-            */
-            orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = sizeof(orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
-            ret = fi_getname((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].ep,
+            * Get our address and publish it with modex.
+            **/
+			orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = sizeof (orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
+	        ret = fi_getname((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].ep,
                             &orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0],
                             &orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
             if (ret) {
-                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+		                opal_output_verbose(1, orte_rml_base_framework.framework_output,
                                     "%s:%d: fi_getname failed: %s\n",
                                     __FILE__, __LINE__, fi_strerror(-ret));
                 free_conduit_resources(conduit_id);
@@ -477,10 +488,25 @@ rml_ofi_init(int* priority)
                 continue;
             }
 
+
+
+            /**
+            * Set the ANY_SRC address.
+            */
+            orte_rml_ofi.any_addr = FI_ADDR_UNSPEC;
+
+            /**
+            *  Post a multi-RECV buffer for each endpoint
+            **/
+
+            /**
+            *  Register the progress fn using WAIT_OBJECT
+            **/
+
         }
     }
 
-    /** the number of conduits in the ofi_conduits[] **/
+    /** the number of conduits in the ofi_conduits[] array **/
     orte_rml_ofi.conduit_open_num = conduit_id;
 
     /**
@@ -522,16 +548,67 @@ void free_conduit_resources( int conduit_id)
     if (orte_rml_ofi.ofi_conduits[conduit_id].fabric) {
         (void) fi_close((fid_t)orte_rml_ofi.ofi_conduits[conduit_id].fabric);
     }
+    /*if (orte_rml_ofi.ofi_conduits[conduit_id].ep_name) {
+        (void) free(orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
+    }*/
     return;
-
 }
 
 int
 orte_rml_ofi_enable_comm(void)
 {
+	int ret;
+
     /* enable the base receive to get updates on contact info */
     orte_rml_base_comm_start();
     opal_output_verbose(1,orte_rml_base_framework.framework_output," From orte_rml_enable_comm() %s:%d", __FILE__,__LINE__);
+
+            /**
+            * fi_getname will provide address based on the fi_info.addr_format,
+            * have one MODEX key for each addr_format supported by
+            * libfabric - FI_SOCKADDR_IN, FI_ADDR_PSMX for now
+            * later this can be increased to include all possible addr_formats.
+            **/
+	for(int conduit_id = 0 ; conduit_id < orte_rml_ofi.conduit_open_num ; conduit_id++)
+	{
+            switch ( orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format)
+            {
+                case  FI_SOCKADDR_IN :
+					opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d In FI_SOCKADDR_IN.  ",__FILE__,__LINE__);
+    
+					if( opal_pmix.put ) {
+						/*  Address is of type sockaddr_in (IPv4) */
+						opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d sending Opal modex string.  ",__FILE__,__LINE__);
+                    	OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
+                                           	OPAL_RML_OFI_FI_SOCKADDR_IN,
+											orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
+											orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
+						//OPAL_MODEX_SEND(ret, OPAL_PMIX_GLOBAL, &mca_rml_ofi_component.rml_version,temp,6);
+					}		
+					else
+					{
+						opal_output_verbose(1,orte_rml_base_framework.framework_output,"opal_pmix is NULL ");
+					}
+                    break;
+                case  FI_ADDR_PSMX :
+					opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                            "%s:%d In FI_ADDR_PSMX.  ",__FILE__,__LINE__);
+                    /*   Address is of type Intel proprietery PSMX */
+                    /*OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
+                                           OPAL_RML_OFI_FI_ADDR_PSMX,orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
+													orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
+                    */
+					
+                    break;
+                default:
+                     opal_output_verbose(1,orte_rml_base_framework.framework_output,
+                     "%s:%d ERROR: Cannot register address, Unhandled addr_format - %d, ep_name - %s  ",
+                      __FILE__,__LINE__,orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format,orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
+            } 
+	}
+
     return ORTE_SUCCESS;
 }
 
@@ -551,14 +628,7 @@ orte_rml_ofi_fini(void)
     }
     OBJ_DESTRUCT(&orte_rml_ofi.exceptions);
 
-    if(orte_rml_ofi.fi_info_list) {
-	(void) fi_freeinfo(orte_rml_ofi.fi_info_list);
-    }
-
-    /* Close endpoint and all queues */
-    for( conduit_id=0;conduit_id<orte_rml_ofi.conduit_open_num;conduit_id++) {
-         free_conduit_resources(conduit_id);
-    }
+   
 
     /* clear the base receive */
     //[A]
