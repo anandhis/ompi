@@ -117,12 +117,12 @@ void free_conduit_resources( int conduit_id)
          free(orte_rml_ofi.ofi_conduits[conduit_id].rxbuf);
     }
 
-	
+
 	orte_rml_ofi.ofi_conduits[conduit_id].ep_name[0] = 0;
 	orte_rml_ofi.ofi_conduits[conduit_id].epnamelen = 0;
 	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = NULL;
 	orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = 0;
-	
+
 	if( orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
 		opal_event_del( &orte_rml_ofi.ofi_conduits[conduit_id].progress_event);
 	}
@@ -305,16 +305,16 @@ void print_transports_query()
 
 
 /**
-	conduit [in]: the conduit_id that triggered the progress fn	
+	conduit [in]: the conduit_id that triggered the progress fn
  **/
 __opal_attribute_always_inline__ static inline int
 orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
-{	
+{
 	ssize_t ret;
 	int count=0;	/* number of messages read and processed */
 	struct fi_cq_data_entry wc = { 0 };
 	struct fi_cq_err_entry error = { 0 };
-  	orte_rml_ofi_request_t *ofi_req; 
+  	orte_rml_ofi_request_t *ofi_req;
 
     opal_output_verbose(1, orte_rml_base_framework.framework_output,
                          "%s orte_rml_ofi_progress called for conduitid %d",
@@ -327,9 +327,9 @@ orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
 	*/
 	while (true) {
 		/* Read the cq - that triggered the libevent to call this progress fn.
-		*	 [backup logic]  if this fails, then logic has to be re-written to check all cq in a loop ?  
+		*	 [backup logic]  if this fails, then logic has to be re-written to check all cq in a loop ?
 		*/
-	    ret = fi_cq_read(conduit->cq, (void *)&wc, 1);  
+	    ret = fi_cq_read(conduit->cq, (void *)&wc, 1);
 		if (0 < ret) {
 			count++;
 			// check the flags to see if this is a send-completion or receive
@@ -391,7 +391,7 @@ orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
 	           "Error returned by request error callback: %zd",
 	           ret);
 	           abort();
-	        } 
+	        }
 		} else {
             /**
              * The CQ is empty. Return.
@@ -405,7 +405,7 @@ orte_rml_ofi_progress(ofi_transport_conduit_t* conduit)
 
 /*
  * call the ofi_progress() fn to read the cq
- * 
+ *
  */
 int cq_progress_handler(int sd, short flags, void *cbdata)
 {
@@ -436,6 +436,11 @@ rml_ofi_init(int* priority)
     uint8_t conduit_id = 0; //[A]
 
     opal_output_verbose(1,orte_rml_base_framework.framework_output,"%s:%d Entering rml_ofi_init()",__FILE__,__LINE__);
+
+    if (!ORTE_PROC_IS_APP) {
+        *priority = 0;
+        return NULL;
+    }
 
     if (init_done) {
         *priority = 2;
@@ -531,7 +536,7 @@ rml_ofi_init(int* priority)
                                 __FILE__, __LINE__, fi_strerror(-ret));
                     free_conduit_resources(conduit_id);
 					/* abort this current transport, but check if next transport can be opened */
-                    continue;                               
+                    continue;
             }
 
 
@@ -668,7 +673,7 @@ rml_ofi_init(int* priority)
                 case  FI_SOCKADDR_IN :
 					opal_output_verbose(1,orte_rml_base_framework.framework_output,
                             "%s:%d In FI_SOCKADDR_IN.  ",__FILE__,__LINE__);
-    				/* [TODO] The PMIX framework is not getting initialised in the 
+    				/* [TODO] The PMIX framework is not getting initialised in the
 					*  mpirun process, so this hits the null case, this needs to be fixed
 					*/
 					if( opal_pmix.put ) {
@@ -686,9 +691,9 @@ rml_ofi_init(int* priority)
                                     __FILE__, __LINE__, fi_strerror(-ret));
                 			free_conduit_resources(conduit_id);
 							/*abort this current transport, but check if next transport can be opened*/
-                			continue;           
+                			continue;
             			}
-					}		
+					}
 					else
 					{
 						opal_output_verbose(1,orte_rml_base_framework.framework_output,"opal_pmix is NULL ");
@@ -700,22 +705,22 @@ rml_ofi_init(int* priority)
                     /*   Address is of type Intel proprietery PSMX */
                     OPAL_MODEX_SEND_STRING( ret, OPAL_PMIX_GLOBAL,
                                            OPAL_RML_OFI_FI_ADDR_PSMX,orte_rml_ofi.ofi_conduits[conduit_id].ep_name,
-													orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);		
+													orte_rml_ofi.ofi_conduits[conduit_id].epnamelen);
 					if (ORTE_SUCCESS != ret) {
                 		opal_output_verbose(1, orte_rml_base_framework.framework_output,
                                 "%s:%d: OPAL_MODEX_SEND failed: %s\n",
                                  __FILE__, __LINE__, fi_strerror(-ret));
                 		free_conduit_resources(conduit_id);
 						/*abort this current transport, but check if next transport can be opened*/
-                		continue;           
-            		}			
+                		continue;
+            		}
                     break;
                 default:
                      opal_output_verbose(1,orte_rml_base_framework.framework_output,
                      "%s:%d ERROR: Cannot register address, Unhandled addr_format - %d, ep_name - %s  ",
                       __FILE__,__LINE__,orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format,
                       orte_rml_ofi.ofi_conduits[conduit_id].ep_name);
-            } 
+            }
 
             /**
             * Set the ANY_SRC address.
@@ -727,23 +732,23 @@ rml_ofi_init(int* priority)
  	        **/
 			//[TODO later]  For now not considering ep_attr prefix_size (add this later)
 			orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size = DEFAULT_MULTI_BUF_SIZE * MULTI_BUF_SIZE_FACTOR;
-			orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = malloc(orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size);     
-			
+			orte_rml_ofi.ofi_conduits[conduit_id].rxbuf = malloc(orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size);
+
 			//[TODO] the context is used as NULL - this code needs to be added to provide the right context
-			ret = fi_mr_reg(orte_rml_ofi.ofi_conduits[conduit_id].domain, 
-							orte_rml_ofi.ofi_conduits[conduit_id].rxbuf, 
+			ret = fi_mr_reg(orte_rml_ofi.ofi_conduits[conduit_id].domain,
+							orte_rml_ofi.ofi_conduits[conduit_id].rxbuf,
 							orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size,
 							FI_RECV, 0, 0, 0, &orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv, NULL);
 			// [TODO] - do we need to use fi_setopt to set the FI_OPT_MIN_MULTI_RECV ?
 			ret = fi_recv(orte_rml_ofi.ofi_conduits[conduit_id].ep,
 						  orte_rml_ofi.ofi_conduits[conduit_id].rxbuf,
 						  orte_rml_ofi.ofi_conduits[conduit_id].rxbuf_size,
-						  fi_mr_desc(orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv), 
+						  fi_mr_desc(orte_rml_ofi.ofi_conduits[conduit_id].mr_multi_recv),
 						  0,0);  //[TODO] context param is 0, need to set it to right context var
             /**
-            *  get the fd  and register the progress fn 
+            *  get the fd  and register the progress fn
             **/
-			ret = fi_control(&orte_rml_ofi.ofi_conduits[conduit_id].cq->fid, FI_GETWAIT, 
+			ret = fi_control(&orte_rml_ofi.ofi_conduits[conduit_id].cq->fid, FI_GETWAIT,
                             (void *) &orte_rml_ofi.ofi_conduits[conduit_id].fd);
 			if (0 != ret) {
                 opal_output_verbose(1, orte_rml_base_framework.framework_output,
@@ -751,13 +756,13 @@ rml_ofi_init(int* priority)
                                     __FILE__, __LINE__, fi_strerror(-ret));
                 free_conduit_resources(conduit_id);
 				/* abort this current transport, but check if next transport can be opened */
-                continue;                               
+                continue;
             }
 
 			/* - create the event  that will wait on the fd*/
 			// not a valid if if (!orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active) {
 			/* use the opal_event_set to do a libevent set on the fd
-			*  so when something is available to read, the cq_porgress_handler 
+			*  so when something is available to read, the cq_porgress_handler
 			*  will be called */
 			opal_event_set(orte_event_base,
                        &orte_rml_ofi.ofi_conduits[conduit_id].progress_event,
@@ -768,7 +773,7 @@ rml_ofi_init(int* priority)
             opal_event_add(&orte_rml_ofi.ofi_conduits[conduit_id].progress_event, 0);
             orte_rml_ofi.ofi_conduits[conduit_id].progress_ev_active = true;
            // }
-			
+
         }
     }
 
@@ -815,7 +820,7 @@ orte_rml_ofi_enable_comm(void)
 	for(int conduit_id = 0 ; conduit_id < orte_rml_ofi.conduit_open_num ; conduit_id++)
 	{
 
-           
+
 	}
 
     return ORTE_SUCCESS;

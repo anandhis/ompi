@@ -377,18 +377,12 @@ int orte_ess_base_orted_setup(char **hosts)
     }
 
     if (ORTE_SUCCESS != (ret = opal_pmix_base_select())) {
-	ORTE_ERROR_LOG(ret);
+        ORTE_ERROR_LOG(ret);
         error = "opal_pmix_base_select";
         goto error;
     }
     /* set the event base */
     opal_pmix_base_set_evbase(orte_event_base);
-    /* setup the PMIx server */
-    if (ORTE_SUCCESS != (ret = pmix_server_init())) {
-        ORTE_ERROR_LOG(ret);
-        error = "pmix server init";
-        goto error;
-    }
     //[A]
 
     /* Setup the communication infrastructure */
@@ -414,6 +408,13 @@ int orte_ess_base_orted_setup(char **hosts)
     }
     /* add our contact info */
     proc->rml_uri = orte_rml.get_contact_info();
+
+    /* setup the PMIx server */
+    if (ORTE_SUCCESS != (ret = pmix_server_init())) {
+        ORTE_ERROR_LOG(ret);
+        error = "pmix server init";
+        goto error;
+    }
 
     /* select the errmgr */
     if (ORTE_SUCCESS != (ret = orte_errmgr_base_select())) {
@@ -532,7 +533,7 @@ int orte_ess_base_orted_setup(char **hosts)
 //[A]        error = "orte_pmix_base_open";
 //[A]        goto error;
 //[A]    }
- 
+
 //[A]    if (ORTE_SUCCESS != (ret = opal_pmix_base_select())) {
 //[A]ORTE_ERROR_LOG(ret);
 //[A]        error = "opal_pmix_base_select";
@@ -546,7 +547,7 @@ int orte_ess_base_orted_setup(char **hosts)
 //[A]        error = "pmix server init";
 //[A]        goto error;
 //[A]    }
-  
+
     /* setup the routed info - the selected routed component
      * will know what to do.
      */
