@@ -329,7 +329,7 @@ static void send_msg(int fd, short args, void *cbdata)
     orte_rml_send_request_t *req = (orte_rml_send_request_t*)cbdata;
     orte_process_name_t *peer = &(req->send.dst);
     orte_rml_tag_t tag = req->send.tag;
-    char *dest_ep_name;
+    char *dest_ep_name, *pmix_key;
     size_t dest_ep_namelen = 0;
     int ret = OPAL_ERROR;
     uint32_t  total_packets;
@@ -339,7 +339,8 @@ static void send_msg(int fd, short args, void *cbdata)
     uint8_t conduit_id = req->conduit_id;
     orte_rml_ofi_send_pkt_t* ofi_msg_pkt;
     size_t datalen_per_pkt, hdrsize, data_in_pkt;  // the length of data in per packet excluding the header size
-
+    orte_rml_ofi_peer_t* pr;
+    uint64_t ui64;
 
     snd = OBJ_NEW(orte_rml_send_t);
     snd->dst = *peer;
@@ -364,28 +365,75 @@ static void send_msg(int fd, short args, void *cbdata)
     /* get the peer address by doing modex_receive 	*/
     opal_output_verbose(10, orte_rml_base_framework.framework_output,
                          "%s calling OPAL_MODEX_RECV_STRING ", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
-    switch ( orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format)
-    {
-       case  FI_SOCKADDR_IN :
-             OPAL_MODEX_RECV_STRING(ret, OPAL_RML_OFI_FI_SOCKADDR_IN, peer , (char **) &dest_ep_name, &dest_ep_namelen);
-                /*print the sockaddr - port and s_addr */
-                struct sockaddr_in* ep_sockaddr = (struct sockaddr_in*) dest_ep_name;
-                opal_output_verbose(10,orte_rml_base_framework.framework_output,
+    // if dest is same as me then instead of doing lookup just populate the dest_ep_name
+    if (peer->jobid == ORTE_PROC_MY_NAME->jobid && peer->vpid == ORTE_PROC_MY_NAME->vpid) {
+        dest_ep_namelen = orte_rml_ofi.ofi_conduits[conduit_id].epnamelen;
+        dest_ep_name = (char *)calloc(dest_ep_namelen,sizeof(char));
+        memcpy( dest_ep_name, orte_rml_ofi.ofi_conduits[conduit_id].ep_name,dest_ep_namelen);
+        opal_output_verbose(2, orte_rml_base_framework.framework_output,
+                            "%s rml:ofi: send and dest are same so proceeding with cur conduit ep_name ",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+        ret = OPAL_SUCCESS;
+    } else {
+        switch ( orte_rml_ofi.ofi_conduits[conduit_id].fabric_info->addr_format)
+        {
+           case  FI_SOCKADDR_IN :
+                if (ORTE_PROC_IS_APP ) {
+                    asprintf(&pmix_key,"%s%d",OPAL_RML_OFI_FI_SOCKADDR_IN,conduit_id);
+                    opal_output_verbose(10, orte_rml_base_framework.framework_output,
+                             "%s calling OPAL_MODEX_RECV_STRING peer - %s, key - %s ", 
+                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(peer),pmix_key );
+                
+                    OPAL_MODEX_RECV_STRING(ret, pmix_key, peer , (char **) &dest_ep_name, &dest_ep_namelen);
+                    opal_output_verbose(10, orte_rml_base_framework.framework_output, "Returned from MODEX_RECV");
+                    free(pmix_key);
+                } else {
+                    memcpy(&ui64, (char*)peer, sizeof(uint64_t));
+                    if (OPAL_SUCCESS != opal_hash_table_get_value_uint64(&orte_rml_ofi.peers,
+                                                             ui64, (void**)&pr) || NULL == pr) {
+                          opal_output_verbose(2, orte_rml_base_framework.framework_output,
+                                    "%s rml:ofi: Send failed to get peer OFI contact info ",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+                          
+                              return;
+                    }
+                    dest_ep_name = pr->socket_ep;
+                    dest_ep_namelen = pr->socket_ep_len;
+                    ret = OPAL_SUCCESS;
+                }
+                    /*print the sockaddr - port and s_addr */
+                    struct sockaddr_in* ep_sockaddr = (struct sockaddr_in*) dest_ep_name;
+                    opal_output_verbose(10,orte_rml_base_framework.framework_output,
                        "%s obtained for peer %s port = 0x%printinx, InternetAddr = %s  ",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),ORTE_NAME_PRINT(peer),ntohs(ep_sockaddr->sin_port),
                         inet_ntoa(ep_sockaddr->sin_addr));
-             break;
-       case  FI_ADDR_PSMX :
-             OPAL_MODEX_RECV_STRING(ret, OPAL_RML_OFI_FI_ADDR_PSMX, peer , (char **) &dest_ep_name, &dest_ep_namelen);
-             break;
-       default:
-            /* we shouldn't be getting here as only above are supported and address sent
-             *  to PMIX (OPAL_MODEX_SEND) in orte_component_init() */
-            opal_output_verbose(1, orte_rml_base_framework.framework_output,
-                  "%s Error:  Unhandled address format type in ofi_send_msg", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
-            snd->status = ORTE_ERR_ADDRESSEE_UNKNOWN;
-            ORTE_RML_SEND_COMPLETE(snd);
-             return;
+                 break;
+           case  FI_ADDR_PSMX :
+                 if (ORTE_PROC_IS_APP ) {
+                    OPAL_MODEX_RECV_STRING(ret, OPAL_RML_OFI_FI_ADDR_PSMX, peer , (char **) &dest_ep_name, &dest_ep_namelen);
+                 } else {
+                    memcpy(&ui64, (char*)peer, sizeof(uint64_t));
+                    if (OPAL_SUCCESS != opal_hash_table_get_value_uint64(&orte_rml_ofi.peers,
+                                                             ui64, (void**)&pr) || NULL == pr) {
+                          opal_output_verbose(2, orte_rml_base_framework.framework_output,
+                                    "%s rml:ofi: Send failed to get peer OFI contact info ",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));                 
+                          return;
+                    }
+                    dest_ep_name = pr->psmx_ep;
+                    dest_ep_namelen = pr->psmx_ep_len;
+                    ret = OPAL_SUCCESS;
+                 }
+                 break;
+           default:
+                /* we shouldn't be getting here as only above are supported and address sent
+                 *  to PMIX (OPAL_MODEX_SEND) in orte_component_init() */
+                opal_output_verbose(1, orte_rml_base_framework.framework_output,
+                      "%s Error:  Unhandled address format type in ofi_send_msg", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+                snd->status = ORTE_ERR_ADDRESSEE_UNKNOWN;
+                ORTE_RML_SEND_COMPLETE(snd);
+                 return;
+        }
     }
     opal_output_verbose(50, orte_rml_base_framework.framework_output,
                          "%s  Return value from OPAL_MODEX_RECV_STRING - %d, length returned - %d",
@@ -556,7 +604,7 @@ static void send_msg(int fd, short args, void *cbdata)
     OBJ_RELEASE(req);
 }
 
-int orte_rml_ofi_send_nb(void* mod,
+int orte_rml_ofi_send_nb(struct orte_rml_base_module_t* mod,
                                    orte_process_name_t* peer,
                                    struct iovec* iov,
                                    int count,
@@ -612,7 +660,7 @@ int orte_rml_ofi_send_nb(void* mod,
 }
 
 
-int orte_rml_ofi_send_buffer_nb(void* mod,
+int orte_rml_ofi_send_buffer_nb(struct orte_rml_base_module_t *mod,
                                               orte_process_name_t* peer,
                                               struct opal_buffer_t* buffer,
                                               orte_rml_tag_t tag,

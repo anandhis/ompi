@@ -46,43 +46,48 @@ void print_transports_query()
     int8_t *prov_num=&conduit_id;
 
     protocol_ptr = &protocol;
-     opal_output(0, "\n Current conduits loaded in rml-ofi ==>");
-    /*opal_output(0,"\n print_transports_query() Begin- %s:%d",__FILE__,__LINE__);
-    opal_output(0,"\n calling the orte_rml_ofi_query_transports() ");*/
-    if( ORTE_SUCCESS == orte_rml.query_transports(&providers)) {
-        //opal_output(0,"\n query_transports() completed, printing details\n");
-        while (providers) {
-            //get the first opal_list_t;
-            opal_list_t temp;
-            opal_list_t *prov = &temp;
+     opal_output(0, "\n Current conduits loaded in rml-ofi ==>");	
 
-            ret = opal_value_unload(providers,(void **)&prov,OPAL_PTR);
-            if (ret == OPAL_SUCCESS) {
-                //opal_output(0,"\n %s:%d opal_value_unload() succeeded, opal_list* prov = %x",__FILE__,__LINE__,prov);
-                if( orte_get_attribute( prov, ORTE_CONDUIT_ID, (void **)&prov_num,OPAL_UINT8)) {
-                    opal_output(0," Provider conduit_id  : %d",*prov_num);
-                }
-                if( orte_get_attribute( prov, ORTE_PROTOCOL, (void **)&protocol_ptr,OPAL_UINT32)) {
-                   opal_output(0," Protocol  : %d",*protocol_ptr);
-                }
-                if( orte_get_attribute( prov, ORTE_PROV_NAME, (void **)&prov_name ,OPAL_STRING)) {
-                    opal_output(0," Provider name : %s",prov_name);
-                } else {
-                    opal_output(0," Error in getting Provider name");
-                }
-            } else {
-                opal_output(0," %s:%d opal_value_unload() failed, opal_list* prov = %x",__FILE__,__LINE__,prov);
-            }
-            providers = (opal_value_t *)providers->super.opal_list_next;
-            // opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n %s:%d -
-            //                                Moving on to next provider provders=%x",__FILE__,__LINE__,providers);
-        }
+/*
+ [Anandhi] this needs to be re-written
+    if( ORTE_SUCCESS == orte_rml.query_transports(&providers))
+    {
+	//opal_output(0,"\n query_transports() completed, printing details\n");
+	while (providers)
+	{
+
+		//get the first opal_list_t;
+        opal_list_t temp;
+		opal_list_t *prov = &temp;
+
+		ret = opal_value_unload(providers,(void **)&prov,OPAL_PTR);
+		if (ret == OPAL_SUCCESS) {
+    		    //opal_output(0,"\n %s:%d opal_value_unload() succeeded, opal_list* prov = %x",__FILE__,__LINE__,prov); 
+            if( orte_get_attribute( prov, ORTE_CONDUIT_ID, (void **)&prov_num,OPAL_UINT8)) {
+                opal_output(0," Provider conduit_id  : %d",*prov_num);
+            }	
+		    if( orte_get_attribute( prov, ORTE_PROTOCOL, (void **)&protocol_ptr,OPAL_UINT32)) {
+		      	opal_output(0," Protocol  : %d",*protocol_ptr);
+		    }
+		    if( orte_get_attribute( prov, ORTE_PROV_NAME, (void **)&prov_name ,OPAL_STRING)) {
+		      	opal_output(0," Provider name : %s",prov_name);
+		    } else {
+			opal_output(0," Error in getting Provider name");
+		    }
+		} else {
+    		    opal_output(0," %s:%d opal_value_unload() failed, opal_list* prov = %x",__FILE__,__LINE__,prov); 	
+		}
+		providers = (opal_value_t *)providers->super.opal_list_next;
+    	//	opal_output_verbose(1,orte_rml_base_framework.framework_output,"\n %s:%d - 
+        //                                Moving on to next provider provders=%x",__FILE__,__LINE__,providers);
+	}
     } else {
         opal_output(0,"\n query_transports() returned Error ");
     }
     //opal_output(0,"\n End of print_transports_query() from ofi_query_test.c \n");
 
   //need to free all the providers here
+[Anandhi] */
 }
 
 
@@ -99,18 +104,18 @@ main(int argc, char *argv[]){
     int conduit_id = 0;  //use the first available conduit
     struct timeval start, end;
     opal_list_t *conduit_attr;
-
+    
 
     /*
      * Init
      */
     orte_init(&argc, &argv, ORTE_PROC_NON_MPI);
 
-    print_transports_query();
+    //print_transports_query();
     conduit_attr = OBJ_NEW(opal_list_t);
-   if( ORTE_SUCCESS ==
-            ( orte_set_attribute( conduit_attr, ORTE_RML_OFI_PROV_NAME_ATTRIB, ORTE_ATTR_GLOBAL,"sockets",OPAL_STRING)))   {
-    if( ORTE_SUCCESS ==
+   if( ORTE_SUCCESS == 
+            ( orte_set_attribute( conduit_attr, ORTE_RML_PROVIDER_ATTRIB, ORTE_ATTR_GLOBAL,"sockets",OPAL_STRING)))   {
+    if( ORTE_SUCCESS == 
             ( orte_set_attribute( conduit_attr, ORTE_RML_INCLUDE_COMP_ATTRIB, ORTE_ATTR_GLOBAL,"ofi",OPAL_STRING)))   {
         opal_output(0, "%s calling open_conduit with ORTE_RML_INCLUDE_COMP_ATTRIB and ORTE_RML_OFI_PROV_NAME_ATTRIB",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
