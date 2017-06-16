@@ -121,7 +121,7 @@ int pmix2x_server_init(opal_pmix_server_module_t *module,
 
     /* convert the list to an array of pmix_info_t */
     if (NULL != info) {
-        sz = opal_list_get_size(info);
+        sz = opal_list_get_size(info) + 2;
         PMIX_INFO_CREATE(pinfo, sz);
         n = 0;
         OPAL_LIST_FOREACH(kv, info, opal_value_t) {
@@ -130,8 +130,8 @@ int pmix2x_server_init(opal_pmix_server_module_t *module,
             ++n;
         }
     } else {
-        sz = 0;
-        pinfo = NULL;
+        sz = 2;
+        PMIX_INFO_CREATE(pinfo, 2);
     }
 
     /* insert ourselves into our list of jobids - it will be the
@@ -141,6 +141,9 @@ int pmix2x_server_init(opal_pmix_server_module_t *module,
     job->jobid = OPAL_PROC_MY_NAME.jobid;
     opal_list_append(&mca_pmix_pmix2x_component.jobids, &job->super);
 
+    /* add our nspace and rank to the array going down to the PMIx server */
+    PMIX_INFO_LOAD(&pinfo[sz-2], PMIX_SERVER_NSPACE, job->nspace, PMIX_STRING);
+    PMIX_INFO_LOAD(&pinfo[sz-1], PMIX_SERVER_RANK, &OPAL_PROC_MY_NAME.vpid, PMIX_PROC_RANK);
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, pinfo, sz))) {
         PMIX_INFO_FREE(pinfo, sz);
         return pmix2x_convert_rc(rc);
