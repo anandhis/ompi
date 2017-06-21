@@ -415,8 +415,8 @@ static void send_msg(int fd, short args, void *cbdata)
                             "%s rml:ofi: Send failed to get peer OFI contact info from internal hash - checking modex",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
         asprintf(&pmix_key,"%s%d",
-                 orte_rml_ofi.ofi_prov[0].fabric_info->fabric_attr->prov_name,
-                 orte_rml_ofi.ofi_prov[0].ofi_prov_id);
+                 orte_rml_ofi.ofi_prov[ofi_prov_id].fabric_info->fabric_attr->prov_name,
+                 ofi_prov_id);
         OPAL_MODEX_RECV_STRING(ret, pmix_key, peer, (void**)&dest_ep_name, &dest_ep_namelen);
         free(pmix_key);
         if (OPAL_SUCCESS != ret) {
